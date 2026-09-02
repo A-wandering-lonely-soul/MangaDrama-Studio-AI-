@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "turbo run dev",
     "dev:web": "pnpm --filter @manga-drama/web dev",
+    "predev:server": "node scripts/ensure-port-free.mjs 3000",
     "dev:server": "pnpm --filter manga-drama-server dev",
+    "predev:core": "node scripts/ensure-port-free.mjs 3000",
     "dev:core": "turbo run dev --filter=@manga-drama/web --filter=manga-drama-server",
     "build": "turbo run build",
     "lint": "turbo run lint",

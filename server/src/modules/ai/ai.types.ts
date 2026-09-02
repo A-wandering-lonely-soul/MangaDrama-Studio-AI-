@@ -48,3 +48,16 @@ export interface AiTaskResponse<T = unknown> {
 export interface PromptPayload {
   prompt?: string;
 }
+
+export interface StaticImageItem {
+  name: string;
+  url: string;
+}
+
+export type StaticAudioKind = 'audio' | 'lrc' | 'ncm';
+
+export interface StaticAudioItem {
+  name: string;
+  url: string;
+  kind: StaticAudioKind;
+}

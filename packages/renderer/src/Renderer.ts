@@ -25,6 +25,7 @@ interface CameraDragState {
 interface ObjectNode {
   container: Container;
   sprite: Sprite;
+  backdrop: Graphics;
   frame: Graphics;
 }
 
@@ -196,6 +197,9 @@ export class Renderer {
         continue;
       }
 
+      const asset = object.assetId ? this.currentAssets.find((entry) => entry.id === object.assetId) : undefined;
+      const isImageAsset = asset?.type === 'image';
+
       node.container.position.set(object.transform.x, object.transform.y);
       node.container.scale.set(object.transform.scaleX, object.transform.scaleY);
       node.container.rotation = object.transform.rotation;
@@ -206,6 +210,14 @@ export class Renderer {
       node.sprite.width = object.transform.width;
       node.sprite.height = object.transform.height;
       node.sprite.anchor.set(object.transform.anchorX, object.transform.anchorY);
+
+      node.backdrop.clear();
+      node.backdrop.roundRect(0, 0, object.transform.width, object.transform.height, 18);
+      node.backdrop.fill({ color: 0x0b1220, alpha: isImageAsset ? 0 : 0.28 });
+      node.backdrop.position.set(
+        -object.transform.width * object.transform.anchorX,
+        -object.transform.height * object.transform.anchorY
+      );
 
       node.frame.clear();
       node.frame.rect(0, 0, object.transform.width, object.transform.height);
@@ -298,21 +310,31 @@ export class Renderer {
     container.visible = object.visible;
     container.sortableChildren = true;
 
-    const texture = this.resolveTexture(object, assets);
+    const asset = object.assetId ? assets.find((entry) => entry.id === object.assetId) : undefined;
+    const texture = this.resolveTexture(object, asset);
     const sprite = new Sprite(texture);
     sprite.anchor.set(object.transform.anchorX, object.transform.anchorY);
+    sprite.eventMode = 'none';
     sprite.width = object.transform.width;
     sprite.height = object.transform.height;
-    sprite.eventMode = 'none';
+
+    if (asset?.url) {
+      this.attachAssetTexture(sprite, asset.url, object);
+    }
+
+    const backdrop = new Graphics();
+    backdrop.roundRect(0, 0, object.transform.width, object.transform.height, 18);
+    const isImageAsset = asset?.type === 'image';
+    backdrop.fill({ color: 0x0b1220, alpha: isImageAsset ? 0 : 0.28 });
+    backdrop.position.set(-object.transform.width * object.transform.anchorX, -object.transform.height * object.transform.anchorY);
 
     const frame = new Graphics();
     frame.rect(0, 0, object.transform.width, object.transform.height);
     frame.stroke({ width: 2, color: object.type === 'character' ? 0x22c55e : 0x60a5fa, alpha: 0.9 });
     frame.position.set(-object.transform.width * object.transform.anchorX, -object.transform.height * object.transform.anchorY);
     frame.visible = selected;
-    sprite.addChild(frame);
 
-    container.addChild(sprite);
+    container.addChild(backdrop, sprite, frame);
 
     container.on('pointerdown', (event) => {
       if (object.locked) {
@@ -343,16 +365,14 @@ export class Renderer {
       container.cursor = 'grab';
     });
 
-    return { container, sprite, frame };
+    return { container, sprite, backdrop, frame };
   }
 
-  private resolveTexture(object: SceneObject, assets: Asset[]): Texture {
-    const asset = object.assetId ? assets.find((entry) => entry.id === object.assetId) : undefined;
-    if (asset?.url) {
-      return Texture.from(asset.url);
+  private resolveTexture(object: SceneObject, asset?: Asset): Texture {
+    if (asset?.type === 'image') {
+      return this.createPlaceholderTexture(object.transform.width, object.transform.height, asset.name);
     }
 
-    const color = object.type === 'background' ? 0x334155 : object.type === 'character' ? 0xf59e0b : 0x38bdf8;
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(object.transform.width));
     canvas.height = Math.max(1, Math.round(object.transform.height));
@@ -361,11 +381,83 @@ export class Renderer {
       return Texture.WHITE;
     }
 
-    context.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = 'rgba(255, 255, 255, 0.2)';
-    context.fillRect(0, 0, canvas.width, 12);
+    if (object.type === 'background') {
+      drawBackgroundIllustration(context, canvas.width, canvas.height, object.name);
+      return Texture.from(canvas);
+    }
+
+    if (object.type === 'character') {
+      drawCharacterCardIllustration(context, canvas.width, canvas.height, object.name);
+      return Texture.from(canvas);
+    }
+
+    drawGenericCardIllustration(context, canvas.width, canvas.height, object.name, object.type);
     return Texture.from(canvas);
+  }
+
+  private createPlaceholderTexture(width: number, height: number, label: string): Texture {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width));
+    canvas.height = Math.max(1, Math.round(height));
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return Texture.WHITE;
+    }
+
+    const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#1d4ed8');
+    gradient.addColorStop(1, '#0ea5e9');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    context.fillStyle = 'rgba(15,23,42,0.65)';
+    roundRect(context, canvas.width * 0.08, canvas.height * 0.72, canvas.width * 0.84, canvas.height * 0.2, Math.min(canvas.width, canvas.height) * 0.05);
+    context.fill();
+
+    context.fillStyle = '#e2e8f0';
+    context.font = `${Math.max(10, Math.floor(canvas.width * 0.08))}px sans-serif`;
+    context.fillText('LOADING IMAGE', canvas.width * 0.12, canvas.height * 0.22);
+    context.fillStyle = '#bfdbfe';
+    context.font = `${Math.max(10, Math.floor(canvas.width * 0.055))}px sans-serif`;
+    context.fillText(truncateLabel(label, 18), canvas.width * 0.12, canvas.height * 0.84);
+
+    return Texture.from(canvas);
+  }
+
+  private attachAssetTexture(sprite: Sprite, url: string, object: SceneObject): void {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(object.transform.width));
+      canvas.height = Math.max(1, Math.round(object.transform.height));
+      const context = canvas.getContext('2d');
+      if (!context) {
+        return;
+      }
+
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+
+      const ratio = Math.min(canvas.width / Math.max(1, image.width), canvas.height / Math.max(1, image.height));
+      const drawWidth = Math.max(1, Math.floor(image.width * ratio));
+      const drawHeight = Math.max(1, Math.floor(image.height * ratio));
+      const drawX = Math.floor((canvas.width - drawWidth) / 2);
+      const drawY = Math.floor((canvas.height - drawHeight) / 2);
+      context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+
+      sprite.texture = Texture.from(canvas);
+      sprite.width = object.transform.width;
+      sprite.height = object.transform.height;
+      sprite.alpha = 1;
+    };
+
+    image.onerror = () => {
+      sprite.alpha = 1;
+    };
+
+    image.src = url;
   }
 
   private toWorldPoint(event: FederatedPointerEvent): Point {
@@ -452,4 +544,137 @@ export class Renderer {
       y: afterCamera.y + (before.y - after.y)
     };
   };
+}
+
+function drawBackgroundIllustration(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  name: string
+): void {
+  const gradient = context.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, '#0f172a');
+  gradient.addColorStop(1, '#334155');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+
+  context.globalAlpha = 0.14;
+  for (let index = 0; index < 8; index += 1) {
+    context.beginPath();
+    context.arc(width * (0.1 + index * 0.12), height * (0.2 + (index % 3) * 0.18), 20 + index * 9, 0, Math.PI * 2);
+    context.fillStyle = index % 2 === 0 ? '#93c5fd' : '#38bdf8';
+    context.fill();
+  }
+  context.globalAlpha = 1;
+
+  context.fillStyle = 'rgba(15, 23, 42, 0.58)';
+  roundRect(context, width * 0.08, height * 0.66, width * 0.84, height * 0.24, Math.min(width, height) * 0.04);
+  context.fill();
+
+  context.fillStyle = '#e2e8f0';
+  context.font = `${Math.max(14, Math.floor(width * 0.07))}px sans-serif`;
+  context.fillText('SCENE', width * 0.13, height * 0.75);
+  context.fillStyle = '#bfdbfe';
+  context.font = `${Math.max(12, Math.floor(width * 0.05))}px sans-serif`;
+  context.fillText(truncateLabel(name, 20), width * 0.13, height * 0.83);
+}
+
+function drawCharacterCardIllustration(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  name: string
+): void {
+  const gradient = context.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, '#1d4ed8');
+  gradient.addColorStop(1, '#0ea5e9');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+
+  context.fillStyle = 'rgba(255, 255, 255, 0.16)';
+  roundRect(context, width * 0.03, height * 0.03, width * 0.94, height * 0.94, Math.min(width, height) * 0.08);
+  context.fill();
+
+  const headRadius = Math.min(width, height) * 0.14;
+  context.fillStyle = '#f8fafc';
+  context.beginPath();
+  context.arc(width * 0.5, height * 0.34, headRadius, 0, Math.PI * 2);
+  context.fill();
+
+  context.fillStyle = '#0f172a';
+  roundRect(context, width * 0.28, height * 0.48, width * 0.44, height * 0.38, Math.min(width, height) * 0.08);
+  context.fill();
+
+  context.fillStyle = 'rgba(255, 255, 255, 0.28)';
+  roundRect(context, width * 0.18, height * 0.76, width * 0.64, height * 0.12, Math.min(width, height) * 0.05);
+  context.fill();
+
+  context.fillStyle = '#e2e8f0';
+  context.font = `${Math.max(12, Math.floor(width * 0.08))}px sans-serif`;
+  context.fillText('CHARACTER', width * 0.13, height * 0.14);
+  context.fillStyle = '#dbeafe';
+  context.font = `${Math.max(10, Math.floor(width * 0.06))}px sans-serif`;
+  context.fillText(truncateLabel(name, 16), width * 0.13, height * 0.22);
+}
+
+function drawGenericCardIllustration(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  name: string,
+  type: SceneObject['type']
+): void {
+  const gradient = context.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, '#0369a1');
+  gradient.addColorStop(1, '#0f766e');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+
+  context.fillStyle = 'rgba(2, 6, 23, 0.35)';
+  roundRect(context, width * 0.08, height * 0.08, width * 0.84, height * 0.84, Math.min(width, height) * 0.08);
+  context.fill();
+
+  context.strokeStyle = 'rgba(226, 232, 240, 0.36)';
+  context.lineWidth = Math.max(2, Math.floor(Math.min(width, height) * 0.015));
+  context.beginPath();
+  context.moveTo(width * 0.2, height * 0.34);
+  context.lineTo(width * 0.8, height * 0.34);
+  context.lineTo(width * 0.8, height * 0.7);
+  context.lineTo(width * 0.2, height * 0.7);
+  context.closePath();
+  context.stroke();
+
+  context.fillStyle = '#e2e8f0';
+  context.font = `${Math.max(10, Math.floor(width * 0.07))}px sans-serif`;
+  context.fillText(type.toUpperCase(), width * 0.14, height * 0.22);
+  context.fillStyle = '#bae6fd';
+  context.font = `${Math.max(10, Math.floor(width * 0.055))}px sans-serif`;
+  context.fillText(truncateLabel(name, 18), width * 0.14, height * 0.82);
+}
+
+function roundRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+): void {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.arcTo(x + width, y, x + width, y + height, r);
+  context.arcTo(x + width, y + height, x, y + height, r);
+  context.arcTo(x, y + height, x, y, r);
+  context.arcTo(x, y, x + width, y, r);
+  context.closePath();
+}
+
+function truncateLabel(value: string, maxLength: number): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, maxLength - 1)}...`;
 }

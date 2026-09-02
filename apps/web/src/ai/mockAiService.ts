@@ -45,7 +45,21 @@ export interface AiTaskResponse<T = unknown> {
   error?: string;
 }
 
+export interface StaticImageItem {
+  name: string;
+  url: string;
+}
+
+export type StaticAudioKind = 'audio' | 'lrc' | 'ncm';
+
+export interface StaticAudioItem {
+  name: string;
+  url: string;
+  kind: StaticAudioKind;
+}
+
 const AI_API_BASE = import.meta.env.VITE_AI_API_BASE_URL ?? 'http://localhost:3000/api/ai';
+const AI_SERVER_ORIGIN = resolveApiOrigin(AI_API_BASE);
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${AI_API_BASE}${path}`, {
@@ -86,4 +100,28 @@ export async function postAiImage(prompt: string): Promise<{ taskId: string }> {
 
 export async function getAiTask(taskId: string): Promise<AiTaskResponse<AiImageTaskResult>> {
   return requestJson<AiTaskResponse<AiImageTaskResult>>(`/tasks/${taskId}`);
+}
+
+export async function getStaticImages(): Promise<StaticImageItem[]> {
+  const items = await requestJson<StaticImageItem[]>('/static-images');
+  return items.map((item) => ({
+    ...item,
+    url: item.url.startsWith('http') ? item.url : `${AI_SERVER_ORIGIN}${item.url}`
+  }));
+}
+
+export async function getStaticAudios(): Promise<StaticAudioItem[]> {
+  const items = await requestJson<StaticAudioItem[]>('/static-audios');
+  return items.map((item) => ({
+    ...item,
+    url: item.url.startsWith('http') ? item.url : `${AI_SERVER_ORIGIN}${item.url}`
+  }));
+}
+
+function resolveApiOrigin(apiBase: string): string {
+  try {
+    return new URL(apiBase).origin;
+  } catch {
+    return 'http://localhost:3000';
+  }
 }

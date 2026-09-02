@@ -1,8 +1,12 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { Asset } from '@manga-drama/types';
 import type {
   AiImageTaskResult,
   AiTaskResponse,
+  StaticAudioItem,
+  StaticImageItem,
   StoryboardOutput,
   StoryOutput
 } from './ai.types';
@@ -11,6 +15,110 @@ import { AiTaskStore } from './ai-task.store';
 @Injectable()
 export class AiService {
   constructor(@Inject(AiTaskStore) private readonly aiTaskStore: AiTaskStore) {}
+
+  async listStaticImages(): Promise<StaticImageItem[]> {
+    const baseDirs = [join(process.cwd(), 'static'), join(process.cwd(), '..', 'static')];
+    const staticDirs = [
+      ...baseDirs.map((baseDir) => ({ dir: join(baseDir, 'image'), urlPrefix: '/static/image/' })),
+      ...baseDirs.map((baseDir) => ({ dir: baseDir, urlPrefix: '/static/' }))
+    ];
+    const allowedExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg']);
+    const uniqueNames = new Set<string>();
+    const items: StaticImageItem[] = [];
+
+    for (const staticDir of staticDirs) {
+      try {
+        const entries = await readdir(staticDir.dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isFile()) {
+            continue;
+          }
+
+          const name = entry.name;
+          if (uniqueNames.has(name)) {
+            continue;
+          }
+
+          const dotIndex = name.lastIndexOf('.');
+          if (dotIndex < 0) {
+            continue;
+          }
+
+          const extension = name.slice(dotIndex).toLowerCase();
+          if (!allowedExtensions.has(extension)) {
+            continue;
+          }
+
+          uniqueNames.add(name);
+          items.push({
+            name,
+            url: `${staticDir.urlPrefix}${encodeURIComponent(name)}`
+          });
+        }
+      } catch {
+        // Ignore missing directories and continue scanning others.
+      }
+    }
+
+    return items;
+  }
+
+  async listStaticAudios(): Promise<StaticAudioItem[]> {
+    const baseDirs = [join(process.cwd(), 'static'), join(process.cwd(), '..', 'static')];
+    const staticDirs = [
+      ...baseDirs.map((baseDir) => ({ dir: join(baseDir, 'music'), urlPrefix: '/static/music/' })),
+      ...baseDirs.map((baseDir) => ({ dir: baseDir, urlPrefix: '/static/' }))
+    ];
+    const audioExtensions = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.flac']);
+    const uniqueNames = new Set<string>();
+    const items: StaticAudioItem[] = [];
+
+    for (const staticDir of staticDirs) {
+      try {
+        const entries = await readdir(staticDir.dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isFile()) {
+            continue;
+          }
+
+          const name = entry.name;
+          if (uniqueNames.has(name)) {
+            continue;
+          }
+
+          const dotIndex = name.lastIndexOf('.');
+          if (dotIndex < 0) {
+            continue;
+          }
+
+          const extension = name.slice(dotIndex).toLowerCase();
+          let kind: StaticAudioItem['kind'] | null = null;
+          if (audioExtensions.has(extension)) {
+            kind = 'audio';
+          } else if (extension === '.lrc') {
+            kind = 'lrc';
+          } else if (extension === '.ncm') {
+            kind = 'ncm';
+          }
+
+          if (!kind) {
+            continue;
+          }
+
+          uniqueNames.add(name);
+          items.push({
+            name,
+            url: `${staticDir.urlPrefix}${encodeURIComponent(name)}`,
+            kind
+          });
+        }
+      } catch {
+        // Ignore missing directories and continue scanning others.
+      }
+    }
+
+    return items;
+  }
 
   async createStory(prompt: string): Promise<StoryOutput> {
     const normalizedPrompt = this.normalizePrompt(prompt);

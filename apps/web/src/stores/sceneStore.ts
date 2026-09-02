@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import type { Asset, Camera, Scene, SceneObject } from '@manga-drama/types';
 
+export type PositionAnimationPreset = 'right-drift' | 'left-drift' | 'rise' | 'fall' | 'arc';
+export type CameraAnimationPreset = 'push-in' | 'pull-out' | 'pan-left' | 'pan-right' | 'follow-selected';
+
 interface SceneState {
   scene: Scene;
   assets: Asset[];
@@ -23,8 +26,8 @@ interface SceneState {
   moveLayerDown: () => void;
   updateObjectPosition: (objectId: string, x: number, y: number) => void;
   updateObjectTransform: (objectId: string, payload: Partial<SceneObject['transform']>) => void;
-  addPositionKeyframesForSelection: () => void;
-  addCameraZoomKeyframes: () => void;
+  addPositionKeyframesForSelection: (preset?: PositionAnimationPreset) => void;
+  addCameraZoomKeyframes: (preset?: CameraAnimationPreset) => void;
   addDemoSubtitleTracks: () => void;
   addAudioTrackForAsset: (assetId: string, duration?: number) => void;
   clearAnimationTracks: () => void;
@@ -354,7 +357,7 @@ export const useSceneStore = create<SceneState>((set) => ({
         )
       }
     })),
-  addPositionKeyframesForSelection: () =>
+  addPositionKeyframesForSelection: (preset = 'right-drift') =>
     set((state) => {
       if (state.selectedIds.length !== 1) {
         return state;
@@ -366,11 +369,7 @@ export const useSceneStore = create<SceneState>((set) => ({
         return state;
       }
 
-      const keyframes = [
-        { id: createId('kf'), time: 0, property: 'x' as const, value: target.transform.x },
-        { id: createId('kf'), time: 1.5, property: 'x' as const, value: target.transform.x + 260 },
-        { id: createId('kf'), time: 3, property: 'x' as const, value: target.transform.x + 520 }
-      ];
+      const keyframes = buildObjectMotionKeyframes(state.scene, target, preset);
 
       const trackId = createId('track');
       const nextTracks = state.scene.animationTracks.filter((track) => track.targetId !== targetId);
@@ -388,14 +387,14 @@ export const useSceneStore = create<SceneState>((set) => ({
         }
       };
     }),
-  addCameraZoomKeyframes: () =>
+  addCameraZoomKeyframes: (preset = 'push-in') =>
     set((state) => {
       const camera = state.scene.camera;
-      const keyframes = [
-        { id: createId('kf'), time: 0, property: 'zoom' as const, value: camera.zoom },
-        { id: createId('kf'), time: 1.5, property: 'zoom' as const, value: camera.zoom + 0.25 },
-        { id: createId('kf'), time: 3, property: 'zoom' as const, value: camera.zoom + 0.5 }
-      ];
+      const focusObject =
+        state.selectedIds.length === 1
+          ? state.scene.objects.find((object) => object.id === state.selectedIds[0])
+          : null;
+      const keyframes = buildCameraMotionKeyframes(state.scene, camera, preset, focusObject ?? undefined);
 
       const nextTracks = state.scene.animationTracks.filter((track) => track.type !== 'camera');
       nextTracks.push({
@@ -463,6 +462,148 @@ export const useSceneStore = create<SceneState>((set) => ({
       }
     }))
 }));
+
+export function buildObjectMotionKeyframes(
+  scene: Scene,
+  target: SceneObject,
+  preset: PositionAnimationPreset
+): Array<{ id: string; time: number; property: 'x' | 'y'; value: number }> {
+  const travelX = Math.min(360, Math.max(140, scene.width * 0.18));
+  const travelY = Math.min(260, Math.max(120, scene.height * 0.1));
+  const waveY = Math.min(140, Math.max(60, scene.height * 0.05));
+
+  if (preset === 'left-drift') {
+    return [
+      { id: createId('kf'), time: 0, property: 'x', value: target.transform.x },
+      { id: createId('kf'), time: 1.2, property: 'x', value: target.transform.x - travelX * 0.45 },
+      { id: createId('kf'), time: 2.4, property: 'x', value: target.transform.x - travelX * 0.85 },
+      { id: createId('kf'), time: 3.6, property: 'x', value: target.transform.x - travelX },
+      { id: createId('kf'), time: 0, property: 'y', value: target.transform.y },
+      { id: createId('kf'), time: 1.2, property: 'y', value: target.transform.y - waveY * 0.45 },
+      { id: createId('kf'), time: 2.4, property: 'y', value: target.transform.y + waveY * 0.2 },
+      { id: createId('kf'), time: 3.6, property: 'y', value: target.transform.y }
+    ];
+  }
+
+  if (preset === 'rise') {
+    return [
+      { id: createId('kf'), time: 0, property: 'x', value: target.transform.x },
+      { id: createId('kf'), time: 1.8, property: 'x', value: target.transform.x + travelX * 0.1 },
+      { id: createId('kf'), time: 3.6, property: 'x', value: target.transform.x },
+      { id: createId('kf'), time: 0, property: 'y', value: target.transform.y },
+      { id: createId('kf'), time: 1.8, property: 'y', value: target.transform.y - travelY * 0.65 },
+      { id: createId('kf'), time: 3.6, property: 'y', value: target.transform.y - travelY }
+    ];
+  }
+
+  if (preset === 'fall') {
+    return [
+      { id: createId('kf'), time: 0, property: 'x', value: target.transform.x },
+      { id: createId('kf'), time: 1.8, property: 'x', value: target.transform.x - travelX * 0.1 },
+      { id: createId('kf'), time: 3.6, property: 'x', value: target.transform.x },
+      { id: createId('kf'), time: 0, property: 'y', value: target.transform.y },
+      { id: createId('kf'), time: 1.8, property: 'y', value: target.transform.y + travelY * 0.65 },
+      { id: createId('kf'), time: 3.6, property: 'y', value: target.transform.y + travelY }
+    ];
+  }
+
+  if (preset === 'arc') {
+    return [
+      { id: createId('kf'), time: 0, property: 'x', value: target.transform.x },
+      { id: createId('kf'), time: 1.2, property: 'x', value: target.transform.x + travelX * 0.4 },
+      { id: createId('kf'), time: 2.4, property: 'x', value: target.transform.x + travelX * 0.8 },
+      { id: createId('kf'), time: 3.6, property: 'x', value: target.transform.x + travelX },
+      { id: createId('kf'), time: 0, property: 'y', value: target.transform.y },
+      { id: createId('kf'), time: 1.2, property: 'y', value: target.transform.y - travelY * 0.55 },
+      { id: createId('kf'), time: 2.4, property: 'y', value: target.transform.y - travelY * 0.2 },
+      { id: createId('kf'), time: 3.6, property: 'y', value: target.transform.y }
+    ];
+  }
+
+  return [
+    { id: createId('kf'), time: 0, property: 'x', value: target.transform.x },
+    { id: createId('kf'), time: 1.2, property: 'x', value: target.transform.x + travelX * 0.45 },
+    { id: createId('kf'), time: 2.4, property: 'x', value: target.transform.x + travelX * 0.85 },
+    { id: createId('kf'), time: 3.6, property: 'x', value: target.transform.x + travelX },
+    { id: createId('kf'), time: 0, property: 'y', value: target.transform.y },
+    { id: createId('kf'), time: 1.2, property: 'y', value: target.transform.y - waveY },
+    { id: createId('kf'), time: 2.4, property: 'y', value: target.transform.y + waveY * 0.42 },
+    { id: createId('kf'), time: 3.6, property: 'y', value: target.transform.y }
+  ];
+}
+
+export function buildCameraMotionKeyframes(
+  scene: Scene,
+  camera: Camera,
+  preset: CameraAnimationPreset,
+  focusObject?: SceneObject
+): Array<{ id: string; time: number; property: 'x' | 'y' | 'zoom'; value: number }> {
+  const targetX = focusObject?.transform.x ?? camera.x + scene.width * 0.06;
+  const targetY = focusObject?.transform.y ?? camera.y - scene.height * 0.04;
+  const followPanX = (targetX - camera.x) * 0.7;
+  const followPanY = (targetY - camera.y) * 0.7;
+  const basePanX = Math.max(120, scene.width * 0.12);
+
+  if (preset === 'pull-out') {
+    return [
+      { id: createId('kf'), time: 0, property: 'zoom', value: camera.zoom },
+      { id: createId('kf'), time: 1.2, property: 'zoom', value: Math.max(0.2, camera.zoom - 0.12) },
+      { id: createId('kf'), time: 2.8, property: 'zoom', value: Math.max(0.2, camera.zoom - 0.22) },
+      { id: createId('kf'), time: 0, property: 'x', value: camera.x },
+      { id: createId('kf'), time: 2.8, property: 'x', value: camera.x - followPanX * 0.4 },
+      { id: createId('kf'), time: 0, property: 'y', value: camera.y },
+      { id: createId('kf'), time: 2.8, property: 'y', value: camera.y - followPanY * 0.4 }
+    ];
+  }
+
+  if (preset === 'pan-left') {
+    return [
+      { id: createId('kf'), time: 0, property: 'zoom', value: camera.zoom },
+      { id: createId('kf'), time: 2.8, property: 'zoom', value: camera.zoom },
+      { id: createId('kf'), time: 0, property: 'x', value: camera.x },
+      { id: createId('kf'), time: 2.8, property: 'x', value: camera.x - basePanX },
+      { id: createId('kf'), time: 0, property: 'y', value: camera.y },
+      { id: createId('kf'), time: 2.8, property: 'y', value: camera.y }
+    ];
+  }
+
+  if (preset === 'pan-right') {
+    return [
+      { id: createId('kf'), time: 0, property: 'zoom', value: camera.zoom },
+      { id: createId('kf'), time: 2.8, property: 'zoom', value: camera.zoom },
+      { id: createId('kf'), time: 0, property: 'x', value: camera.x },
+      { id: createId('kf'), time: 2.8, property: 'x', value: camera.x + basePanX },
+      { id: createId('kf'), time: 0, property: 'y', value: camera.y },
+      { id: createId('kf'), time: 2.8, property: 'y', value: camera.y }
+    ];
+  }
+
+  if (preset === 'follow-selected') {
+    return [
+      { id: createId('kf'), time: 0, property: 'zoom', value: camera.zoom },
+      { id: createId('kf'), time: 1.2, property: 'zoom', value: Math.min(2.5, camera.zoom + 0.12) },
+      { id: createId('kf'), time: 2.8, property: 'zoom', value: Math.min(3, camera.zoom + 0.22) },
+      { id: createId('kf'), time: 0, property: 'x', value: camera.x },
+      { id: createId('kf'), time: 1.2, property: 'x', value: camera.x + followPanX * 0.6 },
+      { id: createId('kf'), time: 2.8, property: 'x', value: camera.x + followPanX },
+      { id: createId('kf'), time: 0, property: 'y', value: camera.y },
+      { id: createId('kf'), time: 1.2, property: 'y', value: camera.y + followPanY * 0.6 },
+      { id: createId('kf'), time: 2.8, property: 'y', value: camera.y + followPanY }
+    ];
+  }
+
+  return [
+    { id: createId('kf'), time: 0, property: 'zoom', value: camera.zoom },
+    { id: createId('kf'), time: 1.2, property: 'zoom', value: Math.min(2.5, camera.zoom + 0.2) },
+    { id: createId('kf'), time: 2.8, property: 'zoom', value: Math.min(3, camera.zoom + 0.35) },
+    { id: createId('kf'), time: 0, property: 'x', value: camera.x },
+    { id: createId('kf'), time: 1.2, property: 'x', value: camera.x + followPanX * 0.6 },
+    { id: createId('kf'), time: 2.8, property: 'x', value: camera.x + followPanX },
+    { id: createId('kf'), time: 0, property: 'y', value: camera.y },
+    { id: createId('kf'), time: 1.2, property: 'y', value: camera.y + followPanY * 0.6 },
+    { id: createId('kf'), time: 2.8, property: 'y', value: camera.y + followPanY }
+  ];
+}
 
 export function createDemoAsset(): Asset {
   const svg = `

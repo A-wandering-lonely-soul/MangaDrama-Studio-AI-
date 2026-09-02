@@ -6,6 +6,16 @@ import type { PromptPayload } from './ai.types';
 export class AiController {
   constructor(@Inject(AiService) private readonly aiService: AiService) {}
 
+  @Get('static-images')
+  listStaticImages() {
+    return this.aiService.listStaticImages();
+  }
+
+  @Get('static-audios')
+  listStaticAudios() {
+    return this.aiService.listStaticAudios();
+  }
+
   @Post('story')
   createStory(@Body() payload: PromptPayload) {
     return this.aiService.createStory(payload?.prompt ?? '');

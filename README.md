@@ -24,6 +24,8 @@ AI 漫剧可视化创作工作台（Web + Desktop + Server 最小闭环）。
 
 ## 启动方式
 
+详细操作说明见：`使用文档.md`
+
 ```bash
 pnpm install
 pnpm dev
@@ -57,6 +59,24 @@ pnpm smoke:ai
 Phase 18：后端 AI Task 已切换到 SQLite 持久化。
 
 当前已具备前后端最小联调闭环，可继续向真实 AI Provider 适配层推进。
+
+### 新增实用能力
+
+- 动画预设：位移动画支持 `向右/向左/升起/落入/弧线`。
+- 镜头预设：支持 `推进/拉远/左移/右移/跟随选中对象`。
+- 右侧属性面板新增“动画预览摘要”，可在落轨前看到关键帧终点。
+
+### 阿里云接入配置位
+
+后端环境变量模板已预留：`server/.env.example`
+
+- `AI_PROVIDER=mock|aliyun`
+- `DASHSCOPE_API_KEY`
+- `DASHSCOPE_BASE_URL`
+- `DASHSCOPE_TEXT_MODEL`
+- `DASHSCOPE_IMAGE_MODEL`
+
+详细开通与免费优先策略见 `使用文档.md`。
 
 ## 设计原则
 
