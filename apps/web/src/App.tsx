@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { ChangeEvent, CSSProperties } from 'react';
 import type { Asset } from '@manga-drama/types';
 import CanvasContainer from './components/CanvasContainer';
@@ -7,6 +7,9 @@ import { useEditorShortcuts } from './hooks/useEditorShortcuts';
 import { usePlaybackStore } from './stores/playbackStore';
 import { useAudioPlayback } from './hooks/useAudioPlayback';
 import { primeAudioContext } from './audio/audioEngine';
+import { useProjectStore } from './stores/projectStore';
+import { useAutoSave } from './hooks/useAutoSave';
+import { exportProjectBundle } from './storage/exportProject';
 
 function toDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -42,13 +45,27 @@ export default function App() {
   const addAudioTrackForAsset = useSceneStore((state) => state.addAudioTrackForAsset);
   const clearAnimationTracks = useSceneStore((state) => state.clearAnimationTracks);
   const updateCamera = useSceneStore((state) => state.updateCamera);
+  const hydrate = useSceneStore((state) => state.hydrate);
   const isPlaying = usePlaybackStore((state) => state.isPlaying);
   const currentTime = usePlaybackStore((state) => state.currentTime);
   const setCurrentTime = usePlaybackStore((state) => state.setCurrentTime);
   const setIsPlaying = usePlaybackStore((state) => state.setIsPlaying);
   const resetPlayback = usePlaybackStore((state) => state.reset);
+  const projectName = useProjectStore((state) => state.projectName);
+  const lastSavedAt = useProjectStore((state) => state.lastSavedAt);
+  const projectList = useProjectStore((state) => state.projectList);
+  const setProjectName = useProjectStore((state) => state.setProjectName);
+  const saveCurrent = useProjectStore((state) => state.saveCurrent);
+  const loadById = useProjectStore((state) => state.loadById);
+  const refreshList = useProjectStore((state) => state.refreshList);
+  const removeProject = useProjectStore((state) => state.removeProject);
 
   useAudioPlayback(scene, assets, isPlaying, currentTime);
+  useAutoSave(scene, assets);
+
+  useEffect(() => {
+    void refreshList();
+  }, [refreshList]);
 
   const activeObject = useMemo(() => {
     if (selectedIds.length !== 1) {
@@ -141,6 +158,40 @@ export default function App() {
     resetPlayback();
   };
 
+  const handleSaveProject = async () => {
+    await saveCurrent(scene, assets);
+  };
+
+  const handleLoadProject = async (projectId: string) => {
+    const bundle = await loadById(projectId);
+    if (!bundle) {
+      return;
+    }
+
+    hydrate(bundle.scene, bundle.assets);
+    resetPlayback();
+  };
+
+  const handleExportProject = async () => {
+    const now = Date.now();
+    const project = {
+      id: `export-${now}`,
+      name: projectName,
+      version: '0.1.0',
+      createdAt: now,
+      updatedAt: now,
+      episodes: [
+        {
+          id: 'episode-001',
+          title: '第 1 集',
+          scenes: [scene]
+        }
+      ]
+    };
+
+    await exportProjectBundle(project, assets);
+  };
+
   const updateCameraField = (key: 'x' | 'y' | 'zoom' | 'rotation', value: number) => {
     if (Number.isNaN(value)) {
       return;
@@ -174,7 +225,7 @@ export default function App() {
       >
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>MangaDrama Studio</div>
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>Phase 5 · 字幕与音频同步</div>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>Phase 6 · 项目保存与导出</div>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 12, color: '#cbd5e1' }}>
           <span>场景: {scene.name}</span>
@@ -182,6 +233,7 @@ export default function App() {
           <span>选中: {selectedIds.length}</span>
           <span>字幕: {scene.subtitleTracks.length}</span>
           <span>音轨: {scene.audioTracks.length}</span>
+          <span>项目: {projectName}</span>
         </div>
       </header>
 
@@ -203,6 +255,57 @@ export default function App() {
           }}
         >
           <h2 style={{ marginTop: 0 }}>素材操作</h2>
+          <h3 style={{ marginTop: 8, marginBottom: 8 }}>项目管理</h3>
+          <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
+            <label style={fieldLabel}>
+              项目名称
+              <input
+                style={fieldInput}
+                type="text"
+                value={projectName}
+                onChange={(event) => setProjectName(event.target.value)}
+              />
+            </label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" style={buttonStyleSecondary} onClick={() => void handleSaveProject()}>
+                立即保存
+              </button>
+              <button type="button" style={buttonStyleSecondary} onClick={() => void refreshList()}>
+                刷新项目列表
+              </button>
+              <button type="button" style={buttonStyleSecondary} onClick={() => void handleExportProject()}>
+                导出项目 ZIP
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: '#94a3b8' }}>
+              最近保存: {lastSavedAt ? new Date(lastSavedAt).toLocaleString() : '尚未保存'}
+            </div>
+            <div style={{ maxHeight: 130, overflow: 'auto', display: 'grid', gap: 8 }}>
+              {projectList.map((item) => (
+                <div
+                  key={item.id}
+                  style={{
+                    border: '1px solid rgba(148, 163, 184, 0.2)',
+                    borderRadius: 10,
+                    padding: '8px 10px',
+                    background: 'rgba(30, 41, 59, 0.75)'
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{item.name}</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(item.updatedAt).toLocaleString()}</div>
+                  <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+                    <button type="button" style={tinyButton} onClick={() => void handleLoadProject(item.id)}>
+                      加载
+                    </button>
+                    <button type="button" style={tinyButtonDanger} onClick={() => void removeProject(item.id)}>
+                      删除
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div style={{ display: 'grid', gap: 12 }}>
             <button type="button" onClick={handleAddDemoImage} style={buttonStyle}>
               添加演示角色
@@ -520,6 +623,22 @@ const fieldInput: CSSProperties = {
   background: 'rgba(15, 23, 42, 0.8)',
   color: '#e2e8f0',
   padding: '8px 10px'
+};
+
+const tinyButton: CSSProperties = {
+  border: '1px solid rgba(148, 163, 184, 0.35)',
+  borderRadius: 8,
+  padding: '4px 8px',
+  background: 'rgba(15, 23, 42, 0.9)',
+  color: '#e2e8f0',
+  fontSize: 12,
+  cursor: 'pointer'
+};
+
+const tinyButtonDanger: CSSProperties = {
+  ...tinyButton,
+  border: '1px solid rgba(248, 113, 113, 0.5)',
+  color: '#fecaca'
 };
 
 const inspectorRow: CSSProperties = {

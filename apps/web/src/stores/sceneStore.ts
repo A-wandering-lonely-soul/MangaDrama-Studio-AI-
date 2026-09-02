@@ -6,6 +6,7 @@ interface SceneState {
   assets: Asset[];
   selectedIds: string[];
   clipboard: SceneObject[];
+  hydrate: (scene: Scene, assets: Asset[]) => void;
   addAsset: (asset: Asset) => void;
   addObject: (object: SceneObject) => void;
   selectObject: (objectId: string, append?: boolean) => void;
@@ -55,6 +56,13 @@ export const useSceneStore = create<SceneState>((set) => ({
   assets: [],
   selectedIds: [],
   clipboard: [],
+  hydrate: (scene, assets) =>
+    set({
+      scene,
+      assets,
+      selectedIds: [],
+      clipboard: []
+    }),
   addAsset: (asset) =>
     set((state) => ({
       assets: [...state.assets, asset]

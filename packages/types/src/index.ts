@@ -106,3 +106,21 @@ export interface Asset {
   duration?: number;
   metadata?: Record<string, unknown>;
 }
+
+export interface ProjectBundle {
+  project: Project;
+  assets: Asset[];
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  updatedAt: number;
+}
+
+export interface StorageAdapter {
+  saveProject(bundle: ProjectBundle): Promise<void>;
+  loadProject(projectId: string): Promise<ProjectBundle | null>;
+  listProjects(): Promise<ProjectSummary[]>;
+  deleteProject(projectId: string): Promise<void>;
+}
