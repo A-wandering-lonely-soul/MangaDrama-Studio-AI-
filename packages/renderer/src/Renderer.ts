@@ -42,6 +42,7 @@ export class Renderer {
   private currentScene: Scene | null = null;
   private currentAssets: Asset[] = [];
   private selectedIdSet = new Set<string>();
+  private subtitleText = '';
 
   async mount(container: HTMLDivElement, options: RendererInitOptions = {}): Promise<void> {
     if (this.app) {
@@ -111,6 +112,16 @@ export class Renderer {
     this.onSelectionChange = handler;
   }
 
+  setSubtitleText(text: string): void {
+    this.subtitleText = text;
+    if (!this.currentScene) {
+      return;
+    }
+
+    this.selectionLayer?.removeChildren();
+    this.renderOverlay(this.currentScene.camera);
+  }
+
   sync({ scene, assets, selectedIds = [] }: RendererSceneUpdate): void {
     this.currentScene = scene;
     this.currentAssets = assets;
@@ -128,7 +139,7 @@ export class Renderer {
     this.applyCameraTransform(scene.camera);
     this.renderSceneBackground(scene);
     this.renderSceneObjects(scene, assets, this.selectedIdSet);
-    this.renderCameraOverlay(scene.camera);
+    this.renderOverlay(scene.camera);
   }
 
   updateCamera(camera: Camera): void {
@@ -142,7 +153,7 @@ export class Renderer {
     };
     this.applyCameraTransform(camera);
     this.selectionLayer?.removeChildren();
-    this.renderCameraOverlay(camera);
+    this.renderOverlay(camera);
     this.onCameraChange?.(camera);
   }
 
@@ -177,7 +188,7 @@ export class Renderer {
     this.currentScene = runtimeScene;
     this.applyCameraTransform(runtimeScene.camera);
     this.selectionLayer?.removeChildren();
-    this.renderCameraOverlay(runtimeScene.camera);
+    this.renderOverlay(runtimeScene.camera);
 
     for (const object of runtimeScene.objects) {
       const node = this.objectNodes.get(object.id);
@@ -239,13 +250,13 @@ export class Renderer {
     }
   }
 
-  private renderCameraOverlay(camera: Camera): void {
+  private renderOverlay(camera: Camera): void {
     if (!this.selectionLayer) {
       return;
     }
 
     const label = new Text({
-      text: `Camera x:${camera.x.toFixed(0)} y:${camera.y.toFixed(0)} zoom:${camera.zoom.toFixed(2)}`,
+      text: `镜头 x:${camera.x.toFixed(0)} y:${camera.y.toFixed(0)} zoom:${camera.zoom.toFixed(2)}`,
       style: {
         fill: 0xffffff,
         fontSize: 12
@@ -253,6 +264,26 @@ export class Renderer {
     });
     label.position.set(16, 16);
     this.selectionLayer.addChild(label);
+
+    if (!this.subtitleText) {
+      return;
+    }
+
+    const subtitle = new Text({
+      text: this.subtitleText,
+      style: {
+        fill: 0xffffff,
+        fontSize: 28,
+        stroke: {
+          color: 0x000000,
+          width: 4
+        },
+        align: 'center'
+      }
+    });
+    subtitle.anchor.set(0.5, 1);
+    subtitle.position.set(this.viewport.x / 2, this.viewport.y - 40);
+    this.selectionLayer.addChild(subtitle);
   }
 
   private createObjectNode(object: SceneObject, assets: Asset[], selected: boolean): ObjectNode {

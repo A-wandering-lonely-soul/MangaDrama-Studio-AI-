@@ -51,12 +51,14 @@ export default function CanvasContainer() {
       });
       const snapshot = useSceneStore.getState();
       renderer.sync({ scene: snapshot.scene, assets: snapshot.assets, selectedIds: snapshot.selectedIds });
+      renderer.setSubtitleText(resolveSubtitle(snapshot.scene, usePlaybackStore.getState().currentTime));
 
       engineRef.current = new TimelineEngine({
         duration: snapshot.scene.duration,
         onTick: ({ time }) => {
           const runtimeScene = createRuntimeScene(sceneRef.current, time);
           renderer.applyRuntimeScene(runtimeScene);
+          renderer.setSubtitleText(resolveSubtitle(runtimeScene, time));
           setCurrentTime(time);
         },
         onStateChange: (nextPlaying) => {
@@ -81,6 +83,7 @@ export default function CanvasContainer() {
     }
 
     renderer.sync({ scene, assets, selectedIds });
+    renderer.setSubtitleText(resolveSubtitle(scene, currentTime));
   }, [assets, scene, selectedIds]);
 
   useEffect(() => {
@@ -98,6 +101,7 @@ export default function CanvasContainer() {
     engine.pause();
     const runtimeScene = createRuntimeScene(scene, currentTime);
     renderer.applyRuntimeScene(runtimeScene);
+    renderer.setSubtitleText(resolveSubtitle(runtimeScene, currentTime));
   }, [currentTime, isPlaying, scene]);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%', minHeight: 640, background: '#020617' }} />;
@@ -169,4 +173,9 @@ function applyTrackToObject(object: SceneObject, scene: Scene, time: number): Sc
     transform: nextTransform,
     opacity: opacity ?? object.opacity
   };
+}
+
+function resolveSubtitle(scene: Scene, time: number): string {
+  const subtitle = scene.subtitleTracks.find((item) => time >= item.startTime && time <= item.endTime);
+  return subtitle?.text ?? '';
 }

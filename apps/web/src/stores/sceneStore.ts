@@ -22,6 +22,8 @@ interface SceneState {
   updateObjectTransform: (objectId: string, payload: Partial<SceneObject['transform']>) => void;
   addPositionKeyframesForSelection: () => void;
   addCameraZoomKeyframes: () => void;
+  addDemoSubtitleTracks: () => void;
+  addAudioTrackForAsset: (assetId: string, duration?: number) => void;
   clearAnimationTracks: () => void;
   updateCamera: (camera: Camera) => void;
 }
@@ -375,6 +377,43 @@ export const useSceneStore = create<SceneState>((set) => ({
         }
       };
     }),
+  addDemoSubtitleTracks: () =>
+    set((state) => ({
+      scene: {
+        ...state.scene,
+        subtitleTracks: [
+          {
+            id: createId('subtitle'),
+            startTime: 0.5,
+            endTime: 2.2,
+            text: '你终于来了……'
+          },
+          {
+            id: createId('subtitle'),
+            startTime: 2.6,
+            endTime: 4.4,
+            text: '雨夜里的一切，才刚开始。'
+          }
+        ]
+      }
+    })),
+  addAudioTrackForAsset: (assetId, duration = 8) =>
+    set((state) => ({
+      scene: {
+        ...state.scene,
+        audioTracks: [
+          ...state.scene.audioTracks,
+          {
+            id: createId('audio'),
+            assetId,
+            startTime: 0,
+            duration,
+            volume: 0.9,
+            loop: false
+          }
+        ]
+      }
+    })),
   clearAnimationTracks: () =>
     set((state) => ({
       scene: {

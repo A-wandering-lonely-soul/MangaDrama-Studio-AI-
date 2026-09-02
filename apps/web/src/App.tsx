@@ -5,6 +5,8 @@ import CanvasContainer from './components/CanvasContainer';
 import { createDemoAsset, createSceneObjectFromAsset, useSceneStore } from './stores/sceneStore';
 import { useEditorShortcuts } from './hooks/useEditorShortcuts';
 import { usePlaybackStore } from './stores/playbackStore';
+import { useAudioPlayback } from './hooks/useAudioPlayback';
+import { primeAudioContext } from './audio/audioEngine';
 
 function toDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -17,6 +19,7 @@ function toDataUrl(file: File): Promise<string> {
 
 export default function App() {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const audioInputRef = useRef<HTMLInputElement | null>(null);
   const scene = useSceneStore((state) => state.scene);
   const assets = useSceneStore((state) => state.assets);
   const selectedIds = useSceneStore((state) => state.selectedIds);
@@ -35,6 +38,8 @@ export default function App() {
   const updateObjectTransform = useSceneStore((state) => state.updateObjectTransform);
   const addPositionKeyframesForSelection = useSceneStore((state) => state.addPositionKeyframesForSelection);
   const addCameraZoomKeyframes = useSceneStore((state) => state.addCameraZoomKeyframes);
+  const addDemoSubtitleTracks = useSceneStore((state) => state.addDemoSubtitleTracks);
+  const addAudioTrackForAsset = useSceneStore((state) => state.addAudioTrackForAsset);
   const clearAnimationTracks = useSceneStore((state) => state.clearAnimationTracks);
   const updateCamera = useSceneStore((state) => state.updateCamera);
   const isPlaying = usePlaybackStore((state) => state.isPlaying);
@@ -42,6 +47,8 @@ export default function App() {
   const setCurrentTime = usePlaybackStore((state) => state.setCurrentTime);
   const setIsPlaying = usePlaybackStore((state) => state.setIsPlaying);
   const resetPlayback = usePlaybackStore((state) => state.reset);
+
+  useAudioPlayback(scene, assets, isPlaying, currentTime);
 
   const activeObject = useMemo(() => {
     if (selectedIds.length !== 1) {
@@ -84,6 +91,30 @@ export default function App() {
     addObject(createSceneObjectFromAsset(asset));
   };
 
+  const handleUploadAudioClick = () => {
+    audioInputRef.current?.click();
+  };
+
+  const handleAudioFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file || !file.type.startsWith('audio/')) {
+      return;
+    }
+
+    const asset: Asset = {
+      id: `asset-${crypto.randomUUID()}`,
+      type: 'audio',
+      name: file.name,
+      url: await toDataUrl(file),
+      duration: scene.duration
+    };
+
+    addAsset(asset);
+    addAudioTrackForAsset(asset.id, scene.duration);
+  };
+
   const updateTransformValue = (key: keyof NonNullable<typeof activeObject>['transform'], value: number) => {
     if (!activeObject || Number.isNaN(value)) {
       return;
@@ -93,8 +124,14 @@ export default function App() {
   };
 
   const handlePlayPause = () => {
-    if (scene.animationTracks.length === 0) {
+    const hasPlayableTrack =
+      scene.animationTracks.length > 0 || scene.subtitleTracks.length > 0 || scene.audioTracks.length > 0;
+    if (!hasPlayableTrack) {
       return;
+    }
+
+    if (!isPlaying) {
+      void primeAudioContext();
     }
 
     setIsPlaying(!isPlaying);
@@ -137,12 +174,14 @@ export default function App() {
       >
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>MangaDrama Studio</div>
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>Phase 4 · 镜头关键帧动画</div>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>Phase 5 · 字幕与音频同步</div>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 12, color: '#cbd5e1' }}>
           <span>场景: {scene.name}</span>
           <span>素材: {assets.length}</span>
           <span>选中: {selectedIds.length}</span>
+          <span>字幕: {scene.subtitleTracks.length}</span>
+          <span>音轨: {scene.audioTracks.length}</span>
         </div>
       </header>
 
@@ -171,7 +210,11 @@ export default function App() {
             <button type="button" onClick={handleUploadClick} style={buttonStyle}>
               上传图片素材
             </button>
+            <button type="button" onClick={handleUploadAudioClick} style={buttonStyleSecondary}>
+              上传音频素材
+            </button>
             <input ref={inputRef} type="file" accept="image/*" hidden onChange={handleFileChange} />
+            <input ref={audioInputRef} type="file" accept="audio/*" hidden onChange={handleAudioFileChange} />
           </div>
           <h3 style={{ marginTop: 20, marginBottom: 10 }}>对象操作</h3>
           <div style={{ display: 'grid', gap: 10 }}>
@@ -216,6 +259,9 @@ export default function App() {
             </button>
             <button type="button" style={buttonStyleSecondary} onClick={addCameraZoomKeyframes}>
               添加镜头推进动画
+            </button>
+            <button type="button" style={buttonStyleSecondary} onClick={addDemoSubtitleTracks}>
+              生成演示字幕
             </button>
             <button type="button" style={buttonStyleSecondary} onClick={clearAnimationTracks}>
               清空动画轨道
