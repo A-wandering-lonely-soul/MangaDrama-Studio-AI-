@@ -1,11 +1,12 @@
 import type { Asset } from '@manga-drama/types';
 import type { PlatformBridge } from '../../../web/src/platform/platformBridge';
 import { appDataDir, BaseDirectory, join } from '@tauri-apps/api/path';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { mkdir, readFile, writeFile } from '@tauri-apps/plugin-fs';
 
 const ROOT_DIR = 'MangaDramaStudio';
 const ASSET_DIR = `${ROOT_DIR}/assets`;
+const EXPORT_DIR = `${ROOT_DIR}/exports`;
 
 function safeSegment(input: string): string {
   const normalized = input.trim().replace(/\s+/g, '_');
@@ -31,6 +32,13 @@ function buildStoredFileName(assetId: string, fileName: string): string {
 
 async function ensureAssetDir(): Promise<void> {
   await mkdir(ASSET_DIR, {
+    baseDir: BaseDirectory.AppData,
+    recursive: true
+  });
+}
+
+async function ensureExportDir(): Promise<void> {
+  await mkdir(EXPORT_DIR, {
     baseDir: BaseDirectory.AppData,
     recursive: true
   });
@@ -102,12 +110,9 @@ export const tauriBridge: PlatformBridge = {
   async saveZipExport(filename, bytes) {
     const timestamp = new Date().toISOString().replace(/[.:]/g, '-');
     const outputName = `${safeSegment(filename.replace(/\.zip$/i, ''))}-${timestamp}.zip`;
-    const relativePath = `${ROOT_DIR}/exports/${outputName}`;
+    const relativePath = `${EXPORT_DIR}/${outputName}`;
 
-    await mkdir(`${ROOT_DIR}/exports`, {
-      baseDir: BaseDirectory.AppData,
-      recursive: true
-    });
+    await ensureExportDir();
 
     await writeFile(relativePath, bytes, {
       baseDir: BaseDirectory.AppData
@@ -117,5 +122,27 @@ export const tauriBridge: PlatformBridge = {
     return {
       destination: absolutePath
     };
+  },
+
+  async getLocalDirectoryState() {
+    const appDataPath = await appDataDir();
+    return {
+      assetsDirLabel: await join(appDataPath, ASSET_DIR),
+      exportsDirLabel: await join(appDataPath, EXPORT_DIR)
+    };
+  },
+
+  async openLocalDirectory(kind) {
+    if (kind === 'assets') {
+      await ensureAssetDir();
+      const absolutePath = await appDataAbsolutePath(ASSET_DIR);
+      await invoke('open_in_file_manager', { path: absolutePath });
+      return absolutePath;
+    }
+
+    await ensureExportDir();
+    const absolutePath = await appDataAbsolutePath(EXPORT_DIR);
+    await invoke('open_in_file_manager', { path: absolutePath });
+    return absolutePath;
   }
 };

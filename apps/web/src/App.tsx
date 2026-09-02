@@ -67,6 +67,9 @@ export default function App() {
   const [imagePrompt, setImagePrompt] = useState('雨夜街头的神秘女孩，动漫风格，电影光影');
   const [aiTaskId, setAiTaskId] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState('尚未导出');
+  const [assetsDirMessage, setAssetsDirMessage] = useState('加载中...');
+  const [exportsDirMessage, setExportsDirMessage] = useState('加载中...');
+  const [directoryActionMessage, setDirectoryActionMessage] = useState('尚未打开目录');
   const importedTaskIdsRef = useRef(new Set<string>());
 
   useAudioPlayback(scene, assets, isPlaying, currentTime);
@@ -138,6 +141,33 @@ export default function App() {
   useEffect(() => {
     void refreshList();
   }, [refreshList]);
+
+  useEffect(() => {
+    let active = true;
+
+    void getPlatformBridge()
+      .getLocalDirectoryState()
+      .then((state) => {
+        if (!active) {
+          return;
+        }
+
+        setAssetsDirMessage(state.assetsDirLabel);
+        setExportsDirMessage(state.exportsDirLabel);
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+
+        setAssetsDirMessage('目录信息读取失败');
+        setExportsDirMessage('目录信息读取失败');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const activeObject = useMemo(() => {
     if (selectedIds.length !== 1) {
@@ -297,6 +327,11 @@ export default function App() {
     setExportMessage(result.destination);
   };
 
+  const handleOpenDirectory = async (kind: 'assets' | 'exports') => {
+    const destination = await getPlatformBridge().openLocalDirectory(kind);
+    setDirectoryActionMessage(destination);
+  };
+
   const updateCameraField = (key: 'x' | 'y' | 'zoom' | 'rotation', value: number) => {
     if (Number.isNaN(value)) {
       return;
@@ -382,11 +417,20 @@ export default function App() {
               <button type="button" style={buttonStyleSecondary} onClick={() => void handleExportProject()}>
                 导出项目 ZIP
               </button>
+              <button type="button" style={buttonStyleSecondary} onClick={() => void handleOpenDirectory('exports')}>
+                打开导出目录
+              </button>
+              <button type="button" style={buttonStyleSecondary} onClick={() => void handleOpenDirectory('assets')}>
+                打开素材目录
+              </button>
             </div>
             <div style={{ fontSize: 12, color: '#94a3b8' }}>
               最近保存: {lastSavedAt ? new Date(lastSavedAt).toLocaleString() : '尚未保存'}
             </div>
             <div style={{ fontSize: 12, color: '#94a3b8', wordBreak: 'break-all' }}>最近导出: {exportMessage}</div>
+            <div style={{ fontSize: 12, color: '#94a3b8', wordBreak: 'break-all' }}>素材目录: {assetsDirMessage}</div>
+            <div style={{ fontSize: 12, color: '#94a3b8', wordBreak: 'break-all' }}>导出目录: {exportsDirMessage}</div>
+            <div style={{ fontSize: 12, color: '#94a3b8', wordBreak: 'break-all' }}>最近打开: {directoryActionMessage}</div>
             <div style={{ maxHeight: 130, overflow: 'auto', display: 'grid', gap: 8 }}>
               {projectList.map((item) => (
                 <div

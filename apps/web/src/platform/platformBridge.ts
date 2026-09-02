@@ -9,10 +9,17 @@ export interface ExportResult {
   destination: string;
 }
 
+export interface LocalDirectoryState {
+  assetsDirLabel: string;
+  exportsDirLabel: string;
+}
+
 export interface PlatformBridge {
   persistImportedFile: (file: File, kind: 'image' | 'audio', assetId: string) => Promise<PersistedAssetFile>;
   getAssetBinaryForExport: (asset: Asset) => Promise<Uint8Array | null>;
   saveZipExport: (filename: string, bytes: Uint8Array) => Promise<ExportResult>;
+  getLocalDirectoryState: () => Promise<LocalDirectoryState>;
+  openLocalDirectory: (kind: 'assets' | 'exports') => Promise<string>;
 }
 
 function toDataUrl(file: File): Promise<string> {
@@ -80,6 +87,15 @@ const defaultPlatformBridge: PlatformBridge = {
     return {
       destination: `浏览器下载: ${filename}`
     };
+  },
+  async getLocalDirectoryState() {
+    return {
+      assetsDirLabel: '浏览器内存素材',
+      exportsDirLabel: '浏览器默认下载目录'
+    };
+  },
+  async openLocalDirectory(kind) {
+    return kind === 'assets' ? '浏览器环境不支持打开素材目录' : '浏览器环境不支持打开导出目录';
   }
 };
 
