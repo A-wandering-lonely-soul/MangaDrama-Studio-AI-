@@ -34,7 +34,9 @@ export default function App() {
   const sendToBack = useSceneStore((state) => state.sendToBack);
   const updateObjectTransform = useSceneStore((state) => state.updateObjectTransform);
   const addPositionKeyframesForSelection = useSceneStore((state) => state.addPositionKeyframesForSelection);
+  const addCameraZoomKeyframes = useSceneStore((state) => state.addCameraZoomKeyframes);
   const clearAnimationTracks = useSceneStore((state) => state.clearAnimationTracks);
+  const updateCamera = useSceneStore((state) => state.updateCamera);
   const isPlaying = usePlaybackStore((state) => state.isPlaying);
   const currentTime = usePlaybackStore((state) => state.currentTime);
   const setCurrentTime = usePlaybackStore((state) => state.setCurrentTime);
@@ -102,6 +104,17 @@ export default function App() {
     resetPlayback();
   };
 
+  const updateCameraField = (key: 'x' | 'y' | 'zoom' | 'rotation', value: number) => {
+    if (Number.isNaN(value)) {
+      return;
+    }
+
+    updateCamera({
+      ...scene.camera,
+      [key]: value
+    });
+  };
+
   return (
     <div
       style={{
@@ -124,7 +137,7 @@ export default function App() {
       >
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>MangaDrama Studio</div>
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>Phase 2 · 画布编辑器</div>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>Phase 4 · 镜头关键帧动画</div>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 12, color: '#cbd5e1' }}>
           <span>场景: {scene.name}</span>
@@ -201,6 +214,9 @@ export default function App() {
             <button type="button" style={buttonStyleSecondary} onClick={addPositionKeyframesForSelection}>
               为选中对象添加位移动画
             </button>
+            <button type="button" style={buttonStyleSecondary} onClick={addCameraZoomKeyframes}>
+              添加镜头推进动画
+            </button>
             <button type="button" style={buttonStyleSecondary} onClick={clearAnimationTracks}>
               清空动画轨道
             </button>
@@ -266,6 +282,47 @@ export default function App() {
             <strong>
               {scene.camera.x.toFixed(0)}, {scene.camera.y.toFixed(0)} · zoom {scene.camera.zoom.toFixed(2)}
             </strong>
+          </div>
+          <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+            <label style={fieldLabel}>
+              镜头 X
+              <input
+                style={fieldInput}
+                type="number"
+                value={scene.camera.x}
+                onChange={(event) => updateCameraField('x', Number(event.target.value))}
+              />
+            </label>
+            <label style={fieldLabel}>
+              镜头 Y
+              <input
+                style={fieldInput}
+                type="number"
+                value={scene.camera.y}
+                onChange={(event) => updateCameraField('y', Number(event.target.value))}
+              />
+            </label>
+            <label style={fieldLabel}>
+              缩放
+              <input
+                style={fieldInput}
+                type="number"
+                step="0.05"
+                min="0.2"
+                value={scene.camera.zoom}
+                onChange={(event) => updateCameraField('zoom', Number(event.target.value))}
+              />
+            </label>
+            <label style={fieldLabel}>
+              旋转 (弧度)
+              <input
+                style={fieldInput}
+                type="number"
+                step="0.05"
+                value={scene.camera.rotation}
+                onChange={(event) => updateCameraField('rotation', Number(event.target.value))}
+              />
+            </label>
           </div>
           <div style={inspectorRow}>
             <span>对象数量</span>

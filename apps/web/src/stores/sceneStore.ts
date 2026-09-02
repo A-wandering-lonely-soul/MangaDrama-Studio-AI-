@@ -21,6 +21,7 @@ interface SceneState {
   updateObjectPosition: (objectId: string, x: number, y: number) => void;
   updateObjectTransform: (objectId: string, payload: Partial<SceneObject['transform']>) => void;
   addPositionKeyframesForSelection: () => void;
+  addCameraZoomKeyframes: () => void;
   clearAnimationTracks: () => void;
   updateCamera: (camera: Camera) => void;
 }
@@ -341,6 +342,29 @@ export const useSceneStore = create<SceneState>((set) => ({
         id: trackId,
         type: 'object',
         targetId,
+        keyframes
+      });
+
+      return {
+        scene: {
+          ...state.scene,
+          animationTracks: nextTracks
+        }
+      };
+    }),
+  addCameraZoomKeyframes: () =>
+    set((state) => {
+      const camera = state.scene.camera;
+      const keyframes = [
+        { id: createId('kf'), time: 0, property: 'zoom' as const, value: camera.zoom },
+        { id: createId('kf'), time: 1.5, property: 'zoom' as const, value: camera.zoom + 0.25 },
+        { id: createId('kf'), time: 3, property: 'zoom' as const, value: camera.zoom + 0.5 }
+      ];
+
+      const nextTracks = state.scene.animationTracks.filter((track) => track.type !== 'camera');
+      nextTracks.push({
+        id: createId('track'),
+        type: 'camera',
         keyframes
       });
 

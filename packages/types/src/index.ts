@@ -57,7 +57,7 @@ export interface SubtitleTrack {
 export interface Keyframe {
   id: string;
   time: number;
-  property: 'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation' | 'opacity';
+  property: 'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation' | 'opacity' | 'zoom';
   value: number;
 }
 

@@ -105,8 +105,31 @@ export default function CanvasContainer() {
 
 function createRuntimeScene(scene: Scene, time: number): Scene {
   const nextObjects = scene.objects.map((object) => applyTrackToObject(object, scene, time));
+  const cameraTrack = scene.animationTracks.find((entry) => entry.type === 'camera');
+  const nextCamera = { ...scene.camera };
+  if (cameraTrack) {
+    const x = evaluateTrackValue(cameraTrack, 'x', time);
+    const y = evaluateTrackValue(cameraTrack, 'y', time);
+    const zoom = evaluateTrackValue(cameraTrack, 'zoom', time);
+    const rotation = evaluateTrackValue(cameraTrack, 'rotation', time);
+
+    if (x !== null) {
+      nextCamera.x = x;
+    }
+    if (y !== null) {
+      nextCamera.y = y;
+    }
+    if (zoom !== null) {
+      nextCamera.zoom = zoom;
+    }
+    if (rotation !== null) {
+      nextCamera.rotation = rotation;
+    }
+  }
+
   return {
     ...scene,
+    camera: nextCamera,
     objects: nextObjects
   };
 }
