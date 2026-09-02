@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import type { Asset, Project } from '@manga-drama/types';
+import type { ExportResult } from '../platform/platformBridge';
 import { getPlatformBridge } from '../platform/platformBridge';
 
 function getFileExtension(asset: Asset): string {
@@ -11,7 +12,7 @@ function getFileExtension(asset: Asset): string {
   return asset.type === 'audio' ? 'bin' : 'png';
 }
 
-export async function exportProjectBundle(project: Project, assets: Asset[]): Promise<void> {
+export async function exportProjectBundle(project: Project, assets: Asset[]): Promise<ExportResult> {
   const bridge = getPlatformBridge();
   const zip = new JSZip();
   zip.file('project.json', JSON.stringify(project, null, 2));
@@ -31,5 +32,5 @@ export async function exportProjectBundle(project: Project, assets: Asset[]): Pr
   }
 
   const content = await zip.generateAsync({ type: 'uint8array' });
-  await bridge.saveZipExport(`${project.name || 'manga-drama-project'}.zip`, content);
+  return bridge.saveZipExport(`${project.name || 'manga-drama-project'}.zip`, content);
 }

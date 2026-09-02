@@ -113,6 +113,9 @@ export const tauriBridge: PlatformBridge = {
       baseDir: BaseDirectory.AppData
     });
 
-    console.info('项目已导出到应用数据目录', relativePath);
+    const absolutePath = await appDataAbsolutePath(relativePath);
+    return {
+      destination: absolutePath
+    };
   }
 };

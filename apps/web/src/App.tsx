@@ -66,6 +66,7 @@ export default function App() {
   const [storyboardOutput, setStoryboardOutput] = useState<StoryboardOutput | null>(null);
   const [imagePrompt, setImagePrompt] = useState('雨夜街头的神秘女孩，动漫风格，电影光影');
   const [aiTaskId, setAiTaskId] = useState<string | null>(null);
+  const [exportMessage, setExportMessage] = useState('尚未导出');
   const importedTaskIdsRef = useRef(new Set<string>());
 
   useAudioPlayback(scene, assets, isPlaying, currentTime);
@@ -292,7 +293,8 @@ export default function App() {
       ]
     };
 
-    await exportProjectBundle(project, assets);
+    const result = await exportProjectBundle(project, assets);
+    setExportMessage(result.destination);
   };
 
   const updateCameraField = (key: 'x' | 'y' | 'zoom' | 'rotation', value: number) => {
@@ -384,6 +386,7 @@ export default function App() {
             <div style={{ fontSize: 12, color: '#94a3b8' }}>
               最近保存: {lastSavedAt ? new Date(lastSavedAt).toLocaleString() : '尚未保存'}
             </div>
+            <div style={{ fontSize: 12, color: '#94a3b8', wordBreak: 'break-all' }}>最近导出: {exportMessage}</div>
             <div style={{ maxHeight: 130, overflow: 'auto', display: 'grid', gap: 8 }}>
               {projectList.map((item) => (
                 <div

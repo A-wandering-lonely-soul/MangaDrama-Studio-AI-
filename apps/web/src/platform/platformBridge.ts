@@ -5,10 +5,14 @@ export interface PersistedAssetFile {
   metadata?: Record<string, unknown>;
 }
 
+export interface ExportResult {
+  destination: string;
+}
+
 export interface PlatformBridge {
   persistImportedFile: (file: File, kind: 'image' | 'audio', assetId: string) => Promise<PersistedAssetFile>;
   getAssetBinaryForExport: (asset: Asset) => Promise<Uint8Array | null>;
-  saveZipExport: (filename: string, bytes: Uint8Array) => Promise<void>;
+  saveZipExport: (filename: string, bytes: Uint8Array) => Promise<ExportResult>;
 }
 
 function toDataUrl(file: File): Promise<string> {
@@ -72,6 +76,10 @@ const defaultPlatformBridge: PlatformBridge = {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
+
+    return {
+      destination: `浏览器下载: ${filename}`
+    };
   }
 };
 
