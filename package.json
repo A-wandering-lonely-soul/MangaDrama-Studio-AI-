@@ -5,8 +5,12 @@
   "packageManager": "pnpm@9.12.3",
   "scripts": {
     "dev": "turbo run dev",
+    "dev:web": "pnpm --filter @manga-drama/web dev",
+    "dev:server": "pnpm --filter manga-drama-server dev",
+    "dev:core": "turbo run dev --filter=@manga-drama/web --filter=manga-drama-server",
     "build": "turbo run build",
-    "lint": "turbo run lint"
+    "lint": "turbo run lint",
+    "smoke:ai": "node scripts/smoke-ai.mjs"
   },
   "devDependencies": {
     "turbo": "^2.0.0",

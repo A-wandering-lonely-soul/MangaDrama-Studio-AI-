@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type { Asset } from '@manga-drama/types';
 import type {
   AiImageTaskResult,
@@ -10,7 +10,7 @@ import { AiTaskStore } from './ai-task.store';
 
 @Injectable()
 export class AiService {
-  constructor(private readonly aiTaskStore: AiTaskStore) {}
+  constructor(@Inject(AiTaskStore) private readonly aiTaskStore: AiTaskStore) {}
 
   async createStory(prompt: string): Promise<StoryOutput> {
     const normalizedPrompt = this.normalizePrompt(prompt);
