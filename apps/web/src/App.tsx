@@ -11,6 +11,7 @@ import { primeAudioContext } from './audio/audioEngine';
 import { useProjectStore } from './stores/projectStore';
 import { useAutoSave } from './hooks/useAutoSave';
 import { exportProjectBundle } from './storage/exportProject';
+import { getPlatformBridge } from './platform/platformBridge';
 import {
   getAiTask,
   postAiImage,
@@ -20,15 +21,6 @@ import {
   type StoryboardOutput
 } from './ai/mockAiService';
 import { storyboardToScene } from './ai/storyboardToScene';
-
-function toDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.onload = () => resolve(String(reader.result));
-    reader.readAsDataURL(file);
-  });
-}
 
 export default function App() {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -174,13 +166,17 @@ export default function App() {
       return;
     }
 
+    const assetId = `asset-${crypto.randomUUID()}`;
+    const persisted = await getPlatformBridge().persistImportedFile(file, 'image', assetId);
+
     const asset: Asset = {
-      id: `asset-${crypto.randomUUID()}`,
+      id: assetId,
       type: 'image',
       name: file.name,
-      url: await toDataUrl(file),
+      url: persisted.url,
       width: 640,
-      height: 640
+      height: 640,
+      metadata: persisted.metadata
     };
 
     addAsset(asset);
@@ -199,12 +195,16 @@ export default function App() {
       return;
     }
 
+    const assetId = `asset-${crypto.randomUUID()}`;
+    const persisted = await getPlatformBridge().persistImportedFile(file, 'audio', assetId);
+
     const asset: Asset = {
-      id: `asset-${crypto.randomUUID()}`,
+      id: assetId,
       type: 'audio',
       name: file.name,
-      url: await toDataUrl(file),
-      duration: scene.duration
+      url: persisted.url,
+      duration: scene.duration,
+      metadata: persisted.metadata
     };
 
     addAsset(asset);
