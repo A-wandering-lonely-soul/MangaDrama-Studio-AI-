@@ -22,11 +22,17 @@ interface CameraDragState {
   startCamera: Camera;
 }
 
+interface ObjectNode {
+  container: Container;
+  sprite: Sprite;
+  frame: Graphics;
+}
+
 export class Renderer {
   private app: Application | null = null;
   private sceneLayer: Container | null = null;
   private selectionLayer: Container | null = null;
-  private objectNodes = new Map<string, Container>();
+  private objectNodes = new Map<string, ObjectNode>();
   private dragState: DragState | null = null;
   private cameraDragState: CameraDragState | null = null;
   private onObjectMove: ((objectId: string, nextPosition: Point) => void) | null = null;
@@ -167,6 +173,37 @@ export class Renderer {
     this.sync({ scene: this.currentScene, assets: this.currentAssets });
   }
 
+  applyRuntimeScene(runtimeScene: Scene): void {
+    this.currentScene = runtimeScene;
+    this.applyCameraTransform(runtimeScene.camera);
+    this.selectionLayer?.removeChildren();
+    this.renderCameraOverlay(runtimeScene.camera);
+
+    for (const object of runtimeScene.objects) {
+      const node = this.objectNodes.get(object.id);
+      if (!node) {
+        continue;
+      }
+
+      node.container.position.set(object.transform.x, object.transform.y);
+      node.container.scale.set(object.transform.scaleX, object.transform.scaleY);
+      node.container.rotation = object.transform.rotation;
+      node.container.alpha = object.opacity;
+      node.container.visible = object.visible;
+      node.container.zIndex = object.zIndex;
+
+      node.sprite.width = object.transform.width;
+      node.sprite.height = object.transform.height;
+      node.sprite.anchor.set(object.transform.anchorX, object.transform.anchorY);
+
+      node.frame.clear();
+      node.frame.rect(0, 0, object.transform.width, object.transform.height);
+      node.frame.stroke({ width: 2, color: object.type === 'character' ? 0x22c55e : 0x60a5fa, alpha: 0.9 });
+      node.frame.position.set(-object.transform.width * object.transform.anchorX, -object.transform.height * object.transform.anchorY);
+      node.frame.visible = this.selectedIdSet.has(object.id);
+    }
+  }
+
   private renderSceneBackground(scene: Scene): void {
     if (!this.sceneLayer) {
       return;
@@ -198,7 +235,7 @@ export class Renderer {
     for (const object of sortedObjects) {
       const node = this.createObjectNode(object, assets, selectedIds.has(object.id));
       this.objectNodes.set(object.id, node);
-      this.sceneLayer.addChild(node);
+      this.sceneLayer.addChild(node.container);
     }
   }
 
@@ -218,9 +255,11 @@ export class Renderer {
     this.selectionLayer.addChild(label);
   }
 
-  private createObjectNode(object: SceneObject, assets: Asset[], selected: boolean): Container {
+  private createObjectNode(object: SceneObject, assets: Asset[], selected: boolean): ObjectNode {
     const container = new Container();
     container.position.set(object.transform.x, object.transform.y);
+    container.scale.set(object.transform.scaleX, object.transform.scaleY);
+    container.rotation = object.transform.rotation;
     container.eventMode = object.locked ? 'none' : 'static';
     container.cursor = object.locked ? 'default' : 'grab';
     container.zIndex = object.zIndex;
@@ -233,8 +272,6 @@ export class Renderer {
     sprite.anchor.set(object.transform.anchorX, object.transform.anchorY);
     sprite.width = object.transform.width;
     sprite.height = object.transform.height;
-    sprite.scale.set(object.transform.scaleX, object.transform.scaleY);
-    sprite.rotation = object.transform.rotation;
     sprite.eventMode = 'none';
 
     const frame = new Graphics();
@@ -275,7 +312,7 @@ export class Renderer {
       container.cursor = 'grab';
     });
 
-    return container;
+    return { container, sprite, frame };
   }
 
   private resolveTexture(object: SceneObject, assets: Asset[]): Texture {

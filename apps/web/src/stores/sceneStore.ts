@@ -20,6 +20,8 @@ interface SceneState {
   moveLayerDown: () => void;
   updateObjectPosition: (objectId: string, x: number, y: number) => void;
   updateObjectTransform: (objectId: string, payload: Partial<SceneObject['transform']>) => void;
+  addPositionKeyframesForSelection: () => void;
+  clearAnimationTracks: () => void;
   updateCamera: (camera: Camera) => void;
 }
 
@@ -313,6 +315,47 @@ export const useSceneStore = create<SceneState>((set) => ({
               }
             : object
         )
+      }
+    })),
+  addPositionKeyframesForSelection: () =>
+    set((state) => {
+      if (state.selectedIds.length !== 1) {
+        return state;
+      }
+
+      const targetId = state.selectedIds[0];
+      const target = state.scene.objects.find((object) => object.id === targetId);
+      if (!target) {
+        return state;
+      }
+
+      const keyframes = [
+        { id: createId('kf'), time: 0, property: 'x' as const, value: target.transform.x },
+        { id: createId('kf'), time: 1.5, property: 'x' as const, value: target.transform.x + 260 },
+        { id: createId('kf'), time: 3, property: 'x' as const, value: target.transform.x + 520 }
+      ];
+
+      const trackId = createId('track');
+      const nextTracks = state.scene.animationTracks.filter((track) => track.targetId !== targetId);
+      nextTracks.push({
+        id: trackId,
+        type: 'object',
+        targetId,
+        keyframes
+      });
+
+      return {
+        scene: {
+          ...state.scene,
+          animationTracks: nextTracks
+        }
+      };
+    }),
+  clearAnimationTracks: () =>
+    set((state) => ({
+      scene: {
+        ...state.scene,
+        animationTracks: []
       }
     })),
   updateCamera: (camera) =>

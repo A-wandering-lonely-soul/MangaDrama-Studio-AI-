@@ -4,6 +4,7 @@ import type { Asset } from '@manga-drama/types';
 import CanvasContainer from './components/CanvasContainer';
 import { createDemoAsset, createSceneObjectFromAsset, useSceneStore } from './stores/sceneStore';
 import { useEditorShortcuts } from './hooks/useEditorShortcuts';
+import { usePlaybackStore } from './stores/playbackStore';
 
 function toDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -32,6 +33,13 @@ export default function App() {
   const bringToFront = useSceneStore((state) => state.bringToFront);
   const sendToBack = useSceneStore((state) => state.sendToBack);
   const updateObjectTransform = useSceneStore((state) => state.updateObjectTransform);
+  const addPositionKeyframesForSelection = useSceneStore((state) => state.addPositionKeyframesForSelection);
+  const clearAnimationTracks = useSceneStore((state) => state.clearAnimationTracks);
+  const isPlaying = usePlaybackStore((state) => state.isPlaying);
+  const currentTime = usePlaybackStore((state) => state.currentTime);
+  const setCurrentTime = usePlaybackStore((state) => state.setCurrentTime);
+  const setIsPlaying = usePlaybackStore((state) => state.setIsPlaying);
+  const resetPlayback = usePlaybackStore((state) => state.reset);
 
   const activeObject = useMemo(() => {
     if (selectedIds.length !== 1) {
@@ -80,6 +88,18 @@ export default function App() {
     }
 
     updateObjectTransform(activeObject.id, { [key]: value });
+  };
+
+  const handlePlayPause = () => {
+    if (scene.animationTracks.length === 0) {
+      return;
+    }
+
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleStop = () => {
+    resetPlayback();
   };
 
   return (
@@ -174,6 +194,39 @@ export default function App() {
             <div>按住 Shift 点击对象可多选。</div>
             <div>Delete 删除，Ctrl+C 复制，Ctrl+V 粘贴。</div>
             <div>鼠标滚轮缩放镜头，拖动空白处平移镜头。</div>
+          </div>
+
+          <h3 style={{ marginTop: 20, marginBottom: 10 }}>时间轴控制</h3>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <button type="button" style={buttonStyleSecondary} onClick={addPositionKeyframesForSelection}>
+              为选中对象添加位移动画
+            </button>
+            <button type="button" style={buttonStyleSecondary} onClick={clearAnimationTracks}>
+              清空动画轨道
+            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" style={buttonStyleSecondary} onClick={handlePlayPause}>
+                {isPlaying ? '暂停' : '播放'}
+              </button>
+              <button type="button" style={buttonStyleSecondary} onClick={handleStop}>
+                停止
+              </button>
+            </div>
+            <label style={{ ...fieldLabel, marginTop: 4 }}>
+              当前时间: {currentTime.toFixed(2)}s / {scene.duration}s
+              <input
+                style={fieldInput}
+                type="range"
+                min={0}
+                max={scene.duration}
+                step={0.01}
+                value={Math.min(scene.duration, currentTime)}
+                onChange={(event) => {
+                  setIsPlaying(false);
+                  setCurrentTime(Number(event.target.value));
+                }}
+              />
+            </label>
           </div>
         </aside>
 
@@ -300,7 +353,7 @@ export default function App() {
               {scene.objects.map((object) => (
                 <div
                   key={object.id}
-                  onClick={() => selectObject(object.id)}
+                  onClick={(event) => selectObject(object.id, event.shiftKey)}
                   style={{
                     padding: '10px 12px',
                     borderRadius: 10,

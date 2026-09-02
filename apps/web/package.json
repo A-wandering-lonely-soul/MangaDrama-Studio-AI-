@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@manga-drama/renderer": "workspace:*",
+    "@manga-drama/timeline": "workspace:*",
     "@manga-drama/types": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
