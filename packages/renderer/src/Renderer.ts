@@ -9,6 +9,7 @@ export interface RendererInitOptions {
 export interface RendererSceneUpdate {
   scene: Scene;
   assets: Asset[];
+  selectedIds?: string[];
 }
 
 interface DragState {
@@ -30,9 +31,11 @@ export class Renderer {
   private cameraDragState: CameraDragState | null = null;
   private onObjectMove: ((objectId: string, nextPosition: Point) => void) | null = null;
   private onCameraChange: ((camera: Camera) => void) | null = null;
+  private onSelectionChange: ((payload: { objectId: string; append: boolean }) => void) | null = null;
   private viewport: Point = { x: 0, y: 0 };
   private currentScene: Scene | null = null;
   private currentAssets: Asset[] = [];
+  private selectedIdSet = new Set<string>();
 
   async mount(container: HTMLDivElement, options: RendererInitOptions = {}): Promise<void> {
     if (this.app) {
@@ -98,9 +101,14 @@ export class Renderer {
     this.onCameraChange = handler;
   }
 
-  sync({ scene, assets }: RendererSceneUpdate): void {
+  setSelectionChangeHandler(handler: (payload: { objectId: string; append: boolean }) => void): void {
+    this.onSelectionChange = handler;
+  }
+
+  sync({ scene, assets, selectedIds = [] }: RendererSceneUpdate): void {
     this.currentScene = scene;
     this.currentAssets = assets;
+    this.selectedIdSet = new Set(selectedIds);
     this.viewport = { x: this.app?.screen.width ?? scene.width, y: this.app?.screen.height ?? scene.height };
 
     if (!this.app || !this.sceneLayer || !this.selectionLayer) {
@@ -113,7 +121,7 @@ export class Renderer {
 
     this.applyCameraTransform(scene.camera);
     this.renderSceneBackground(scene);
-    this.renderSceneObjects(scene, assets);
+    this.renderSceneObjects(scene, assets, this.selectedIdSet);
     this.renderCameraOverlay(scene.camera);
   }
 
@@ -181,14 +189,14 @@ export class Renderer {
     this.sceneLayer.rotation = camera.rotation;
   }
 
-  private renderSceneObjects(scene: Scene, assets: Asset[]): void {
+  private renderSceneObjects(scene: Scene, assets: Asset[], selectedIds: Set<string>): void {
     if (!this.sceneLayer) {
       return;
     }
 
     const sortedObjects = [...scene.objects].sort((left, right) => left.zIndex - right.zIndex);
     for (const object of sortedObjects) {
-      const node = this.createObjectNode(object, assets, scene.camera);
+      const node = this.createObjectNode(object, assets, selectedIds.has(object.id));
       this.objectNodes.set(object.id, node);
       this.sceneLayer.addChild(node);
     }
@@ -210,7 +218,7 @@ export class Renderer {
     this.selectionLayer.addChild(label);
   }
 
-  private createObjectNode(object: SceneObject, assets: Asset[], camera: Camera): Container {
+  private createObjectNode(object: SceneObject, assets: Asset[], selected: boolean): Container {
     const container = new Container();
     container.position.set(object.transform.x, object.transform.y);
     container.eventMode = object.locked ? 'none' : 'static';
@@ -231,9 +239,9 @@ export class Renderer {
 
     const frame = new Graphics();
     frame.rect(0, 0, object.transform.width, object.transform.height);
-    frame.stroke({ width: 1, color: object.type === 'character' ? 0x22c55e : 0x60a5fa, alpha: 0.5 });
+    frame.stroke({ width: 2, color: object.type === 'character' ? 0x22c55e : 0x60a5fa, alpha: 0.9 });
     frame.position.set(-object.transform.width * object.transform.anchorX, -object.transform.height * object.transform.anchorY);
-    frame.visible = false;
+    frame.visible = selected;
     sprite.addChild(frame);
 
     container.addChild(sprite);
@@ -251,8 +259,10 @@ export class Renderer {
           y: globalPoint.y - object.transform.y
         }
       };
+      this.onSelectionChange?.({ objectId: object.id, append: event.shiftKey });
       container.cursor = 'grabbing';
       frame.visible = true;
+      event.stopPropagation();
     });
 
     container.on('pointerup', () => {
@@ -301,6 +311,10 @@ export class Renderer {
   private handleStagePointerDown = (event: FederatedPointerEvent): void => {
     if (!this.currentScene || event.target !== this.app?.stage) {
       return;
+    }
+
+    if (!event.shiftKey) {
+      this.onSelectionChange?.({ objectId: '', append: false });
     }
 
     this.cameraDragState = {

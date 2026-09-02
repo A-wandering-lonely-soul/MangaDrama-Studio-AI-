@@ -7,8 +7,10 @@ export default function CanvasContainer() {
   const rendererRef = useRef<Renderer | null>(null);
   const scene = useSceneStore((state) => state.scene);
   const assets = useSceneStore((state) => state.assets);
+  const selectedIds = useSceneStore((state) => state.selectedIds);
   const updateObjectPosition = useSceneStore((state) => state.updateObjectPosition);
   const updateCamera = useSceneStore((state) => state.updateCamera);
+  const selectObject = useSceneStore((state) => state.selectObject);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -33,7 +35,11 @@ export default function CanvasContainer() {
       renderer.setCameraChangeHandler((camera) => {
         updateCamera(camera);
       });
-      renderer.sync({ scene, assets });
+      renderer.setSelectionChangeHandler(({ objectId, append }) => {
+        selectObject(objectId, append);
+      });
+      const snapshot = useSceneStore.getState();
+      renderer.sync({ scene: snapshot.scene, assets: snapshot.assets, selectedIds: snapshot.selectedIds });
     })();
 
     return () => {
@@ -41,7 +47,7 @@ export default function CanvasContainer() {
       renderer.destroy();
       rendererRef.current = null;
     };
-  }, [updateCamera, updateObjectPosition]);
+  }, [selectObject, updateCamera, updateObjectPosition]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -49,8 +55,8 @@ export default function CanvasContainer() {
       return;
     }
 
-    renderer.sync({ scene, assets });
-  }, [assets, scene]);
+    renderer.sync({ scene, assets, selectedIds });
+  }, [assets, scene, selectedIds]);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%', minHeight: 640, background: '#020617' }} />;
 }

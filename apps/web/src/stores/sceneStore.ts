@@ -4,9 +4,22 @@ import type { Asset, Camera, Scene, SceneObject } from '@manga-drama/types';
 interface SceneState {
   scene: Scene;
   assets: Asset[];
+  selectedIds: string[];
+  clipboard: SceneObject[];
   addAsset: (asset: Asset) => void;
   addObject: (object: SceneObject) => void;
+  selectObject: (objectId: string, append?: boolean) => void;
+  clearSelection: () => void;
+  removeSelectedObjects: () => void;
+  duplicateSelectedObjects: () => void;
+  copySelection: () => void;
+  pasteSelection: () => void;
+  bringToFront: () => void;
+  sendToBack: () => void;
+  moveLayerUp: () => void;
+  moveLayerDown: () => void;
   updateObjectPosition: (objectId: string, x: number, y: number) => void;
+  updateObjectTransform: (objectId: string, payload: Partial<SceneObject['transform']>) => void;
   updateCamera: (camera: Camera) => void;
 }
 
@@ -35,6 +48,8 @@ const initialScene: Scene = {
 export const useSceneStore = create<SceneState>((set) => ({
   scene: initialScene,
   assets: [],
+  selectedIds: [],
+  clipboard: [],
   addAsset: (asset) =>
     set((state) => ({
       assets: [...state.assets, asset]
@@ -46,6 +61,225 @@ export const useSceneStore = create<SceneState>((set) => ({
         objects: [...state.scene.objects, object]
       }
     })),
+  selectObject: (objectId, append = false) =>
+    set((state) => {
+      if (!objectId) {
+        return { selectedIds: [] };
+      }
+
+      if (!append) {
+        return { selectedIds: [objectId] };
+      }
+
+      const selected = new Set(state.selectedIds);
+      if (selected.has(objectId)) {
+        selected.delete(objectId);
+      } else {
+        selected.add(objectId);
+      }
+
+      return { selectedIds: Array.from(selected) };
+    }),
+  clearSelection: () => set({ selectedIds: [] }),
+  removeSelectedObjects: () =>
+    set((state) => {
+      const selected = new Set(state.selectedIds);
+      if (selected.size === 0) {
+        return state;
+      }
+
+      return {
+        scene: {
+          ...state.scene,
+          objects: state.scene.objects.filter((object) => !selected.has(object.id))
+        },
+        selectedIds: []
+      };
+    }),
+  duplicateSelectedObjects: () =>
+    set((state) => {
+      if (state.selectedIds.length === 0) {
+        return state;
+      }
+
+      const selected = new Set(state.selectedIds);
+      const maxZ = state.scene.objects.reduce((max, object) => Math.max(max, object.zIndex), 0);
+
+      const duplicates = state.scene.objects
+        .filter((object) => selected.has(object.id))
+        .map((object, index) => ({
+          ...object,
+          id: createId('object'),
+          name: `${object.name} 副本`,
+          transform: {
+            ...object.transform,
+            x: object.transform.x + 40,
+            y: object.transform.y + 40
+          },
+          zIndex: maxZ + (index + 1)
+        }));
+
+      return {
+        scene: {
+          ...state.scene,
+          objects: [...state.scene.objects, ...duplicates]
+        },
+        selectedIds: duplicates.map((item) => item.id)
+      };
+    }),
+  copySelection: () =>
+    set((state) => {
+      const selected = new Set(state.selectedIds);
+      return {
+        clipboard: state.scene.objects
+          .filter((object) => selected.has(object.id))
+          .map((object) => ({
+            ...object,
+            transform: { ...object.transform }
+          }))
+      };
+    }),
+  pasteSelection: () =>
+    set((state) => {
+      if (state.clipboard.length === 0) {
+        return state;
+      }
+
+      const maxZ = state.scene.objects.reduce((max, object) => Math.max(max, object.zIndex), 0);
+      const pasted = state.clipboard.map((object, index) => ({
+        ...object,
+        id: createId('object'),
+        name: `${object.name} 粘贴`,
+        transform: {
+          ...object.transform,
+          x: object.transform.x + 50,
+          y: object.transform.y + 50
+        },
+        zIndex: maxZ + (index + 1)
+      }));
+
+      return {
+        scene: {
+          ...state.scene,
+          objects: [...state.scene.objects, ...pasted]
+        },
+        selectedIds: pasted.map((item) => item.id)
+      };
+    }),
+  bringToFront: () =>
+    set((state) => {
+      if (state.selectedIds.length === 0) {
+        return state;
+      }
+
+      const selected = new Set(state.selectedIds);
+      const maxZ = state.scene.objects.reduce((max, object) => Math.max(max, object.zIndex), 0);
+      let step = 1;
+      return {
+        scene: {
+          ...state.scene,
+          objects: state.scene.objects.map((object) => {
+            if (!selected.has(object.id)) {
+              return object;
+            }
+
+            const next = {
+              ...object,
+              zIndex: maxZ + step
+            };
+            step += 1;
+            return next;
+          })
+        }
+      };
+    }),
+  sendToBack: () =>
+    set((state) => {
+      if (state.selectedIds.length === 0) {
+        return state;
+      }
+
+      const selected = new Set(state.selectedIds);
+      const minZ = state.scene.objects.reduce((min, object) => Math.min(min, object.zIndex), 0);
+      let step = 1;
+      return {
+        scene: {
+          ...state.scene,
+          objects: state.scene.objects.map((object) => {
+            if (!selected.has(object.id)) {
+              return object;
+            }
+
+            const next = {
+              ...object,
+              zIndex: minZ - step
+            };
+            step += 1;
+            return next;
+          })
+        }
+      };
+    }),
+  moveLayerUp: () =>
+    set((state) => {
+      if (state.selectedIds.length !== 1) {
+        return state;
+      }
+
+      const targetId = state.selectedIds[0];
+      const sorted = [...state.scene.objects].sort((a, b) => a.zIndex - b.zIndex);
+      const index = sorted.findIndex((item) => item.id === targetId);
+      if (index < 0 || index === sorted.length - 1) {
+        return state;
+      }
+
+      const current = sorted[index];
+      const next = sorted[index + 1];
+      return {
+        scene: {
+          ...state.scene,
+          objects: state.scene.objects.map((object) => {
+            if (object.id === current.id) {
+              return { ...object, zIndex: next.zIndex };
+            }
+            if (object.id === next.id) {
+              return { ...object, zIndex: current.zIndex };
+            }
+            return object;
+          })
+        }
+      };
+    }),
+  moveLayerDown: () =>
+    set((state) => {
+      if (state.selectedIds.length !== 1) {
+        return state;
+      }
+
+      const targetId = state.selectedIds[0];
+      const sorted = [...state.scene.objects].sort((a, b) => a.zIndex - b.zIndex);
+      const index = sorted.findIndex((item) => item.id === targetId);
+      if (index <= 0) {
+        return state;
+      }
+
+      const current = sorted[index];
+      const prev = sorted[index - 1];
+      return {
+        scene: {
+          ...state.scene,
+          objects: state.scene.objects.map((object) => {
+            if (object.id === current.id) {
+              return { ...object, zIndex: prev.zIndex };
+            }
+            if (object.id === prev.id) {
+              return { ...object, zIndex: current.zIndex };
+            }
+            return object;
+          })
+        }
+      };
+    }),
   updateObjectPosition: (objectId, x, y) =>
     set((state) => ({
       scene: {
@@ -58,6 +292,23 @@ export const useSceneStore = create<SceneState>((set) => ({
                   ...object.transform,
                   x,
                   y
+                }
+              }
+            : object
+        )
+      }
+    })),
+  updateObjectTransform: (objectId, payload) =>
+    set((state) => ({
+      scene: {
+        ...state.scene,
+        objects: state.scene.objects.map((object) =>
+          object.id === objectId
+            ? {
+                ...object,
+                transform: {
+                  ...object.transform,
+                  ...payload
                 }
               }
             : object
