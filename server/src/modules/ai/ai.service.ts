@@ -3,20 +3,14 @@ import type { Asset } from '@manga-drama/types';
 import type {
   AiImageTaskResult,
   AiTaskResponse,
-  AiTaskStatus,
   StoryboardOutput,
   StoryOutput
 } from './ai.types';
-
-interface InternalTask {
-  status: AiTaskStatus;
-  result?: AiImageTaskResult;
-  error?: string;
-}
+import { AiTaskStore } from './ai-task.store';
 
 @Injectable()
 export class AiService {
-  private readonly tasks = new Map<string, InternalTask>();
+  constructor(private readonly aiTaskStore: AiTaskStore) {}
 
   async createStory(prompt: string): Promise<StoryOutput> {
     const normalizedPrompt = this.normalizePrompt(prompt);
@@ -74,20 +68,19 @@ export class AiService {
   async createImageTask(prompt: string): Promise<{ taskId: string }> {
     const normalizedPrompt = this.normalizePrompt(prompt);
     const taskId = this.makeTaskId();
-    this.tasks.set(taskId, { status: 'PENDING' });
+    this.aiTaskStore.create(taskId, 'PENDING');
 
     setTimeout(() => {
-      const task = this.tasks.get(taskId);
+      const task = this.aiTaskStore.get(taskId);
       if (!task) {
         return;
       }
 
-      task.status = 'RUNNING';
-      this.tasks.set(taskId, task);
+      this.aiTaskStore.update(taskId, { status: 'RUNNING' });
     }, 700);
 
     setTimeout(() => {
-      const task = this.tasks.get(taskId);
+      const task = this.aiTaskStore.get(taskId);
       if (!task) {
         return;
       }
@@ -101,16 +94,17 @@ export class AiService {
         height: 1080
       };
 
-      task.status = 'SUCCEEDED';
-      task.result = { asset };
-      this.tasks.set(taskId, task);
+      this.aiTaskStore.update(taskId, {
+        status: 'SUCCEEDED',
+        result: { asset }
+      });
     }, 2100);
 
     return { taskId };
   }
 
   async getTask(taskId: string): Promise<AiTaskResponse<AiImageTaskResult>> {
-    const task = this.tasks.get(taskId);
+    const task = this.aiTaskStore.get(taskId);
     if (!task) {
       return {
         taskId,

@@ -2,6 +2,7 @@ interface AppConfig {
   port: number;
   corsOrigins: string[] | '*';
   nodeEnv: string;
+  sqlitePath: string;
 }
 
 function parsePort(value: string | undefined): number {
@@ -32,6 +33,7 @@ export function getAppConfig(): AppConfig {
   return {
     port: parsePort(process.env.PORT),
     corsOrigins: parseCorsOrigins(process.env.CORS_ORIGIN),
-    nodeEnv: process.env.NODE_ENV?.trim() || 'development'
+    nodeEnv: process.env.NODE_ENV?.trim() || 'development',
+    sqlitePath: process.env.SQLITE_PATH?.trim() || './data/manga-drama.db'
   };
 }
