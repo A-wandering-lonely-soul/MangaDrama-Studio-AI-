@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Episode, Project, ProjectSummary, Scene } from '@manga-drama/types';
 import type { Asset } from '@manga-drama/types';
-import { indexedDbAdapter } from '../storage/indexedDbAdapter';
+import { getStorageAdapter } from '../storage/storageAdapter';
 
 interface ProjectState {
   projectId: string;
@@ -41,7 +41,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       episodes: [createEpisode(scene)]
     };
 
-    await indexedDbAdapter.saveProject({
+    await getStorageAdapter().saveProject({
       project,
       assets
     });
@@ -50,7 +50,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get().refreshList();
   },
   loadById: async (projectId) => {
-    const bundle = await indexedDbAdapter.loadProject(projectId);
+    const bundle = await getStorageAdapter().loadProject(projectId);
     if (!bundle) {
       return null;
     }
@@ -72,11 +72,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     };
   },
   refreshList: async () => {
-    const projectList = await indexedDbAdapter.listProjects();
+    const projectList = await getStorageAdapter().listProjects();
     set({ projectList });
   },
   removeProject: async (projectId) => {
-    await indexedDbAdapter.deleteProject(projectId);
+    await getStorageAdapter().deleteProject(projectId);
     await get().refreshList();
   }
 }));

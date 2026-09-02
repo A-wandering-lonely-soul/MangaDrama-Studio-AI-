@@ -1,5 +1,5 @@
 import type { ProjectBundle, ProjectSummary, StorageAdapter } from '@manga-drama/types';
-import { BaseDirectory, exists, mkdir, readTextFile, remove, writeTextFile } from '@tauri-apps/plugin-fs';
+import { BaseDirectory, exists, mkdir, readDir, readTextFile, remove, writeTextFile } from '@tauri-apps/plugin-fs';
 
 const ROOT_DIR = 'MangaDramaStudio';
 
@@ -35,8 +35,32 @@ export const tauriStorageAdapter: StorageAdapter = {
   },
 
   async listProjects(): Promise<ProjectSummary[]> {
-    // Phase 9 最小实现：以空列表兜底，后续可结合 readDir 扫描目录
-    return [];
+    const rootExists = await exists(ROOT_DIR, { baseDir: BaseDirectory.AppData });
+    if (!rootExists) {
+      return [];
+    }
+
+    const entries = await readDir(ROOT_DIR, { baseDir: BaseDirectory.AppData });
+    const projects = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory && entry.name)
+        .map(async (entry) => {
+          try {
+            const projectId = String(entry.name);
+            const text = await readTextFile(projectFile(projectId), { baseDir: BaseDirectory.AppData });
+            const bundle = JSON.parse(text) as ProjectBundle;
+            return {
+              id: bundle.project.id,
+              name: bundle.project.name,
+              updatedAt: bundle.project.updatedAt
+            } satisfies ProjectSummary;
+          } catch {
+            return null;
+          }
+        })
+    );
+
+    return projects.filter((item): item is ProjectSummary => item !== null).sort((a, b) => b.updatedAt - a.updatedAt);
   },
 
   async deleteProject(projectId: string): Promise<void> {
