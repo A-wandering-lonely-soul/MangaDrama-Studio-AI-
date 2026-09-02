@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import type { Asset } from '@manga-drama/types';
 import type {
   AiImageTaskResult,
@@ -19,9 +19,11 @@ export class AiService {
   private readonly tasks = new Map<string, InternalTask>();
 
   async createStory(prompt: string): Promise<StoryOutput> {
+    const normalizedPrompt = this.normalizePrompt(prompt);
+
     return {
       title: '雨夜',
-      logline: prompt || '一个少年在雨夜遇见神秘女孩。',
+      logline: normalizedPrompt,
       episodes: [
         {
           title: '第 1 集：雨夜相遇',
@@ -43,6 +45,8 @@ export class AiService {
   }
 
   async createStoryboard(prompt: string): Promise<StoryboardOutput> {
+    const normalizedPrompt = this.normalizePrompt(prompt);
+
     return {
       scenes: [
         {
@@ -55,7 +59,7 @@ export class AiService {
           dialogue: '今夜有些不寻常……'
         },
         {
-          description: `角色中景推进，女孩出现在路灯下。${prompt ? `提示词：${prompt.slice(0, 20)}` : ''}`,
+          description: `角色中景推进，女孩出现在路灯下。提示词：${normalizedPrompt.slice(0, 20)}`,
           duration: 3,
           camera: { x: 540, y: 960, zoom: 0.72, rotation: 0 },
           characters: ['少年', '女孩'],
@@ -68,6 +72,7 @@ export class AiService {
   }
 
   async createImageTask(prompt: string): Promise<{ taskId: string }> {
+    const normalizedPrompt = this.normalizePrompt(prompt);
     const taskId = this.makeTaskId();
     this.tasks.set(taskId, { status: 'PENDING' });
 
@@ -90,8 +95,8 @@ export class AiService {
       const asset: Asset = {
         id: `asset-${crypto.randomUUID()}`,
         type: 'image',
-        name: `AI-${prompt.slice(0, 12) || '角色素材'}`,
-        url: this.makeImageDataUrl(prompt || '雨夜漫剧角色'),
+        name: `AI-${normalizedPrompt.slice(0, 12) || '角色素材'}`,
+        url: this.makeImageDataUrl(normalizedPrompt),
         width: 1080,
         height: 1080
       };
@@ -124,6 +129,15 @@ export class AiService {
 
   private makeTaskId(): string {
     return `task-${crypto.randomUUID()}`;
+  }
+
+  private normalizePrompt(prompt: string): string {
+    const normalizedPrompt = prompt.trim();
+    if (!normalizedPrompt) {
+      throw new BadRequestException('prompt 不能为空');
+    }
+
+    return normalizedPrompt;
   }
 
   private makeImageDataUrl(prompt: string): string {
