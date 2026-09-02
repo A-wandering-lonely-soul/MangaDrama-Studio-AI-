@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MangaDrama Studio",
+  "version": "0.1.0",
+  "identifier": "com.mangadrama.studio",
+  "build": {
+    "beforeDevCommand": "pnpm --filter @manga-drama/desktop dev",
+    "beforeBuildCommand": "pnpm --filter @manga-drama/desktop build",
+    "devUrl": "http://localhost:5174",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "MangaDrama Studio",
+        "width": 1440,
+        "height": 900,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": []
+  }
+}
