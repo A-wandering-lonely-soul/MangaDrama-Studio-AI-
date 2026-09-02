@@ -19,6 +19,7 @@ import {
   type StoryOutput,
   type StoryboardOutput
 } from './ai/mockAiService';
+import { storyboardToScene } from './ai/storyboardToScene';
 
 function toDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -223,6 +224,17 @@ export default function App() {
     imageMutation.mutate(imagePrompt);
   };
 
+  const handleApplyStoryboardScene = () => {
+    if (!storyboardOutput) {
+      return;
+    }
+
+    const generated = storyboardToScene(storyboardOutput);
+    hydrate(generated.scene, [...assets, ...generated.assets]);
+    resetPlayback();
+    setIsPlaying(false);
+  };
+
   const updateTransformValue = (key: keyof NonNullable<typeof activeObject>['transform'], value: number) => {
     if (!activeObject || Number.isNaN(value)) {
       return;
@@ -316,7 +328,7 @@ export default function App() {
       >
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>MangaDrama Studio</div>
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>Phase 7 · AI 生成（Mock）</div>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>Phase 8 · AI 自动编排场景</div>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 12, color: '#cbd5e1' }}>
           <span>场景: {scene.name}</span>
@@ -427,6 +439,9 @@ export default function App() {
             </label>
             <button type="button" style={buttonStyleSecondary} onClick={handleGenerateImage}>
               {imageMutation.isPending ? '提交任务中...' : '生成图片素材'}
+            </button>
+            <button type="button" style={buttonStyleSecondary} onClick={handleApplyStoryboardScene}>
+              分镜一键编排场景
             </button>
             <div style={{ fontSize: 12, color: '#93c5fd' }}>
               任务状态: {aiTaskQuery.data?.status ?? '未提交'}
