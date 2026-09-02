@@ -1,3 +1,6 @@
+export * from './coordinate';
+export * from './Renderer';
+
 export const RENDERER_VERSION = '0.1.0';
 
 export interface RendererHealth {

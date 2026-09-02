@@ -12,7 +12,8 @@
     "@manga-drama/renderer": "workspace:*",
     "@manga-drama/types": "workspace:*",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.6"
   },
   "devDependencies": {
     "@types/react": "^18.3.11",
