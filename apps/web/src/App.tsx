@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, CSSProperties } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { Asset } from '@manga-drama/types';
 import CanvasContainer from './components/CanvasContainer';
 import { createDemoAsset, createSceneObjectFromAsset, useSceneStore } from './stores/sceneStore';
@@ -10,6 +11,14 @@ import { primeAudioContext } from './audio/audioEngine';
 import { useProjectStore } from './stores/projectStore';
 import { useAutoSave } from './hooks/useAutoSave';
 import { exportProjectBundle } from './storage/exportProject';
+import {
+  getAiTask,
+  postAiImage,
+  postAiStoryboard,
+  postAiStory,
+  type StoryOutput,
+  type StoryboardOutput
+} from './ai/mockAiService';
 
 function toDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -59,9 +68,78 @@ export default function App() {
   const loadById = useProjectStore((state) => state.loadById);
   const refreshList = useProjectStore((state) => state.refreshList);
   const removeProject = useProjectStore((state) => state.removeProject);
+  const [storyPrompt, setStoryPrompt] = useState('一个少年在雨夜遇见神秘女孩。');
+  const [storyOutput, setStoryOutput] = useState<StoryOutput | null>(null);
+  const [storyboardOutput, setStoryboardOutput] = useState<StoryboardOutput | null>(null);
+  const [imagePrompt, setImagePrompt] = useState('雨夜街头的神秘女孩，动漫风格，电影光影');
+  const [aiTaskId, setAiTaskId] = useState<string | null>(null);
+  const importedTaskIdsRef = useRef(new Set<string>());
 
   useAudioPlayback(scene, assets, isPlaying, currentTime);
   useAutoSave(scene, assets);
+
+  const storyMutation = useMutation({
+    mutationFn: postAiStory,
+    onSuccess: (data) => {
+      setStoryOutput(data);
+    }
+  });
+
+  const storyboardMutation = useMutation({
+    mutationFn: postAiStoryboard,
+    onSuccess: (data) => {
+      setStoryboardOutput(data);
+      if (data.scenes[0]?.description) {
+        setImagePrompt(data.scenes[0].description);
+      }
+    }
+  });
+
+  const imageMutation = useMutation({
+    mutationFn: postAiImage,
+    onSuccess: (data) => {
+      setAiTaskId(data.taskId);
+    }
+  });
+
+  const aiTaskQuery = useQuery({
+    queryKey: ['ai-task', aiTaskId],
+    queryFn: async () => {
+      if (!aiTaskId) {
+        throw new Error('任务 ID 不存在');
+      }
+
+      return getAiTask(aiTaskId);
+    },
+    enabled: Boolean(aiTaskId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (!status || status === 'PENDING' || status === 'RUNNING') {
+        return 1000;
+      }
+
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (!aiTaskId || !aiTaskQuery.data) {
+      return;
+    }
+
+    if (aiTaskQuery.data.status !== 'SUCCEEDED' || !aiTaskQuery.data.result?.asset) {
+      return;
+    }
+
+    if (importedTaskIdsRef.current.has(aiTaskId)) {
+      return;
+    }
+
+    importedTaskIdsRef.current.add(aiTaskId);
+    const generated = aiTaskQuery.data.result.asset;
+    addAsset(generated);
+    addObject(createSceneObjectFromAsset(generated));
+  }, [addAsset, addObject, aiTaskId, aiTaskQuery.data]);
 
   useEffect(() => {
     void refreshList();
@@ -130,6 +208,19 @@ export default function App() {
 
     addAsset(asset);
     addAudioTrackForAsset(asset.id, scene.duration);
+  };
+
+  const handleGenerateStory = () => {
+    storyMutation.mutate(storyPrompt);
+  };
+
+  const handleGenerateStoryboard = () => {
+    const text = storyOutput?.logline ?? storyPrompt;
+    storyboardMutation.mutate(text);
+  };
+
+  const handleGenerateImage = () => {
+    imageMutation.mutate(imagePrompt);
   };
 
   const updateTransformValue = (key: keyof NonNullable<typeof activeObject>['transform'], value: number) => {
@@ -225,7 +316,7 @@ export default function App() {
       >
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>MangaDrama Studio</div>
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>Phase 6 · 项目保存与导出</div>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>Phase 7 · AI 生成（Mock）</div>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 12, color: '#cbd5e1' }}>
           <span>场景: {scene.name}</span>
@@ -234,6 +325,7 @@ export default function App() {
           <span>字幕: {scene.subtitleTracks.length}</span>
           <span>音轨: {scene.audioTracks.length}</span>
           <span>项目: {projectName}</span>
+          <span>AI任务: {aiTaskQuery.data?.status ?? 'IDLE'}</span>
         </div>
       </header>
 
@@ -304,6 +396,54 @@ export default function App() {
                 </div>
               ))}
             </div>
+          </div>
+
+          <h3 style={{ marginTop: 12, marginBottom: 8 }}>AI 创作（Mock）</h3>
+          <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
+            <label style={fieldLabel}>
+              故事输入
+              <textarea
+                style={{ ...fieldInput, minHeight: 72, resize: 'vertical' }}
+                value={storyPrompt}
+                onChange={(event) => setStoryPrompt(event.target.value)}
+              />
+            </label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" style={buttonStyleSecondary} onClick={handleGenerateStory}>
+                {storyMutation.isPending ? '生成剧本中...' : '生成剧本'}
+              </button>
+              <button type="button" style={buttonStyleSecondary} onClick={handleGenerateStoryboard}>
+                {storyboardMutation.isPending ? '生成分镜中...' : '生成分镜'}
+              </button>
+            </div>
+            <label style={fieldLabel}>
+              图片提示词
+              <input
+                style={fieldInput}
+                type="text"
+                value={imagePrompt}
+                onChange={(event) => setImagePrompt(event.target.value)}
+              />
+            </label>
+            <button type="button" style={buttonStyleSecondary} onClick={handleGenerateImage}>
+              {imageMutation.isPending ? '提交任务中...' : '生成图片素材'}
+            </button>
+            <div style={{ fontSize: 12, color: '#93c5fd' }}>
+              任务状态: {aiTaskQuery.data?.status ?? '未提交'}
+              {aiTaskId ? ` · ${aiTaskId}` : ''}
+            </div>
+            {storyOutput && (
+              <details>
+                <summary style={{ cursor: 'pointer', fontSize: 12, color: '#bfdbfe' }}>查看剧本 JSON</summary>
+                <pre style={preStyle}>{JSON.stringify(storyOutput, null, 2)}</pre>
+              </details>
+            )}
+            {storyboardOutput && (
+              <details>
+                <summary style={{ cursor: 'pointer', fontSize: 12, color: '#bfdbfe' }}>查看分镜 JSON</summary>
+                <pre style={preStyle}>{JSON.stringify(storyboardOutput, null, 2)}</pre>
+              </details>
+            )}
           </div>
 
           <div style={{ display: 'grid', gap: 12 }}>
@@ -639,6 +779,19 @@ const tinyButtonDanger: CSSProperties = {
   ...tinyButton,
   border: '1px solid rgba(248, 113, 113, 0.5)',
   color: '#fecaca'
+};
+
+const preStyle: CSSProperties = {
+  marginTop: 8,
+  maxHeight: 180,
+  overflow: 'auto',
+  borderRadius: 8,
+  border: '1px solid rgba(148, 163, 184, 0.2)',
+  background: 'rgba(2, 6, 23, 0.95)',
+  color: '#cbd5e1',
+  fontSize: 11,
+  padding: 10,
+  whiteSpace: 'pre-wrap'
 };
 
 const inspectorRow: CSSProperties = {
