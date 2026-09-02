@@ -15,8 +15,10 @@ AI 漫剧可视化创作工作台的 Phase 0 最小工程脚手架。
 ## 目录说明
 
 - `apps/web`：前端入口应用
+- `apps/desktop`：Tauri 桌面端入口
 - `packages/types`：项目核心类型定义
 - `packages/renderer`：PixiJS 渲染层初始骨架
+- `server`：NestJS 后端最小骨架与 AI Mock API
 
 ## 启动方式
 
@@ -25,11 +27,17 @@ pnpm install
 pnpm dev
 ```
 
+后端单独启动：
+
+```bash
+pnpm --filter manga-drama-server dev
+```
+
 ## 当前阶段
 
 Phase 0：工程初始化
 
-后续将严格按设计书的 Phase 1 → Phase 9 顺序推进。
+后续将严格按设计书的 Phase 1 → Phase 9 顺序推进，并在桌面端与后端能力上做最小闭环补齐。
 
 ## 设计原则
 
