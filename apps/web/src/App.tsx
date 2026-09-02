@@ -25,10 +25,14 @@ import { storyboardToScene } from './ai/storyboardToScene';
 export default function App() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
+  const replaceImageInputRef = useRef<HTMLInputElement | null>(null);
+  const replaceAudioInputRef = useRef<HTMLInputElement | null>(null);
   const scene = useSceneStore((state) => state.scene);
   const assets = useSceneStore((state) => state.assets);
   const selectedIds = useSceneStore((state) => state.selectedIds);
   const addAsset = useSceneStore((state) => state.addAsset);
+  const replaceAsset = useSceneStore((state) => state.replaceAsset);
+  const removeAsset = useSceneStore((state) => state.removeAsset);
   const addObject = useSceneStore((state) => state.addObject);
   const selectObject = useSceneStore((state) => state.selectObject);
   const clearSelection = useSceneStore((state) => state.clearSelection);
@@ -70,6 +74,8 @@ export default function App() {
   const [assetsDirMessage, setAssetsDirMessage] = useState('加载中...');
   const [exportsDirMessage, setExportsDirMessage] = useState('加载中...');
   const [directoryActionMessage, setDirectoryActionMessage] = useState('尚未打开目录');
+  const [assetActionMessage, setAssetActionMessage] = useState('尚未操作素材');
+  const [replacingAssetId, setReplacingAssetId] = useState<string | null>(null);
   const importedTaskIdsRef = useRef(new Set<string>());
 
   useAudioPlayback(scene, assets, isPlaying, currentTime);
@@ -218,6 +224,26 @@ export default function App() {
     audioInputRef.current?.click();
   };
 
+  const replaceAssetFromFile = async (asset: Asset, file: File) => {
+    const persisted = await getPlatformBridge().persistImportedFile(
+      file,
+      asset.type === 'audio' ? 'audio' : 'image',
+      asset.id
+    );
+
+    replaceAsset({
+      ...asset,
+      name: file.name,
+      url: persisted.url,
+      width: asset.type === 'audio' ? asset.width : 640,
+      height: asset.type === 'audio' ? asset.height : 640,
+      metadata: persisted.metadata,
+      duration: asset.type === 'audio' ? scene.duration : asset.duration
+    });
+
+    setAssetActionMessage(`已替换素材: ${file.name}`);
+  };
+
   const handleAudioFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -240,10 +266,74 @@ export default function App() {
 
     addAsset(asset);
     addAudioTrackForAsset(asset.id, scene.duration);
+    setAssetActionMessage(`已导入音频素材: ${asset.name}`);
+  };
+
+  const handleReplaceImageFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file || !file.type.startsWith('image/') || !replacingAssetId) {
+      setReplacingAssetId(null);
+      return;
+    }
+
+    const targetAsset = assets.find((asset) => asset.id === replacingAssetId && asset.type !== 'audio');
+    setReplacingAssetId(null);
+    if (!targetAsset) {
+      return;
+    }
+
+    await replaceAssetFromFile(targetAsset, file);
+  };
+
+  const handleReplaceAudioFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file || !file.type.startsWith('audio/') || !replacingAssetId) {
+      setReplacingAssetId(null);
+      return;
+    }
+
+    const targetAsset = assets.find((asset) => asset.id === replacingAssetId && asset.type === 'audio');
+    setReplacingAssetId(null);
+    if (!targetAsset) {
+      return;
+    }
+
+    await replaceAssetFromFile(targetAsset, file);
   };
 
   const handleGenerateStory = () => {
     storyMutation.mutate(storyPrompt);
+  };
+
+  const handlePlaceAsset = (asset: Asset) => {
+    if (asset.type === 'audio') {
+      addAudioTrackForAsset(asset.id, scene.duration);
+      setAssetActionMessage(`已添加音轨: ${asset.name}`);
+      return;
+    }
+
+    addObject(createSceneObjectFromAsset(asset));
+    setAssetActionMessage(`已加入场景: ${asset.name}`);
+  };
+
+  const handleRemoveAsset = (asset: Asset) => {
+    removeAsset(asset.id);
+    setAssetActionMessage(`已删除素材: ${asset.name}`);
+  };
+
+  const handleReplaceAssetClick = (asset: Asset) => {
+    setReplacingAssetId(asset.id);
+    if (asset.type === 'audio') {
+      audioInputRef.current?.blur();
+      replaceAudioInputRef.current?.click();
+      return;
+    }
+
+    replaceImageInputRef.current?.click();
   };
 
   const handleGenerateStoryboard = () => {
@@ -520,6 +610,54 @@ export default function App() {
             </button>
             <input ref={inputRef} type="file" accept="image/*" hidden onChange={handleFileChange} />
             <input ref={audioInputRef} type="file" accept="audio/*" hidden onChange={handleAudioFileChange} />
+            <input
+              ref={replaceImageInputRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={handleReplaceImageFileChange}
+            />
+            <input
+              ref={replaceAudioInputRef}
+              type="file"
+              accept="audio/*"
+              hidden
+              onChange={handleReplaceAudioFileChange}
+            />
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 10 }}>素材列表</h3>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8, wordBreak: 'break-all' }}>
+              最近操作: {assetActionMessage}
+            </div>
+            <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflow: 'auto' }}>
+              {assets.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>暂无素材，先上传图片或音频。</div>}
+              {assets.map((asset) => (
+                <div
+                  key={asset.id}
+                  style={{
+                    border: '1px solid rgba(148, 163, 184, 0.2)',
+                    borderRadius: 10,
+                    padding: '8px 10px',
+                    background: 'rgba(30, 41, 59, 0.75)'
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{asset.name}</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{asset.type}</div>
+                  <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button type="button" style={tinyButton} onClick={() => handlePlaceAsset(asset)}>
+                      {asset.type === 'audio' ? '加入音轨' : '加入场景'}
+                    </button>
+                    <button type="button" style={tinyButton} onClick={() => handleReplaceAssetClick(asset)}>
+                      替换
+                    </button>
+                    <button type="button" style={tinyButtonDanger} onClick={() => handleRemoveAsset(asset)}>
+                      删除
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
           <h3 style={{ marginTop: 20, marginBottom: 10 }}>对象操作</h3>
           <div style={{ display: 'grid', gap: 10 }}>

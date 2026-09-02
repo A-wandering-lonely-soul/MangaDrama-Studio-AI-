@@ -8,6 +8,8 @@ interface SceneState {
   clipboard: SceneObject[];
   hydrate: (scene: Scene, assets: Asset[]) => void;
   addAsset: (asset: Asset) => void;
+  replaceAsset: (asset: Asset) => void;
+  removeAsset: (assetId: string) => void;
   addObject: (object: SceneObject) => void;
   selectObject: (objectId: string, append?: boolean) => void;
   clearSelection: () => void;
@@ -67,6 +69,30 @@ export const useSceneStore = create<SceneState>((set) => ({
     set((state) => ({
       assets: [...state.assets, asset]
     })),
+  replaceAsset: (asset) =>
+    set((state) => ({
+      assets: state.assets.map((item) => (item.id === asset.id ? asset : item))
+    })),
+  removeAsset: (assetId) =>
+    set((state) => {
+      const removedObjectIds = new Set(
+        state.scene.objects.filter((object) => object.assetId === assetId).map((object) => object.id)
+      );
+
+      return {
+        assets: state.assets.filter((asset) => asset.id !== assetId),
+        selectedIds: state.selectedIds.filter((objectId) => !removedObjectIds.has(objectId)),
+        clipboard: state.clipboard.filter((object) => object.assetId !== assetId),
+        scene: {
+          ...state.scene,
+          objects: state.scene.objects.filter((object) => object.assetId !== assetId),
+          audioTracks: state.scene.audioTracks.filter((track) => track.assetId !== assetId),
+          animationTracks: state.scene.animationTracks.filter(
+            (track) => !track.targetId || !removedObjectIds.has(track.targetId)
+          )
+        }
+      };
+    }),
   addObject: (object) =>
     set((state) => ({
       scene: {
