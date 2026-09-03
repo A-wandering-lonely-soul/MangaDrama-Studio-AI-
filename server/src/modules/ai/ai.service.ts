@@ -17,6 +17,7 @@ import { AiTaskStore } from './ai-task.store';
 @Injectable()
 export class AiService {
   private readonly appConfig = getAppConfig();
+  private imageRateLimitUntilMs = 0;
 
   constructor(@Inject(AiTaskStore) private readonly aiTaskStore: AiTaskStore) {}
 
@@ -364,6 +365,11 @@ export class AiService {
   private async createImageAssetByAliyun(prompt: string): Promise<Asset> {
     this.ensureAliyunConfig();
 
+    const waitSeconds = this.getImageRateLimitWaitSeconds();
+    if (waitSeconds > 0) {
+      throw new Error(`阿里云图片限流，请在 ${waitSeconds} 秒后重试`);
+    }
+
     const imageBaseUrl = this.resolveDashscopeImageBaseUrl();
     const model = this.appConfig.dashscopeImageModel;
     const endpoints = this.resolveDashscopeImageTaskEndpoints(imageBaseUrl, model);
@@ -379,6 +385,10 @@ export class AiService {
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'unknown error';
+        if (message.includes('阿里云图片限流')) {
+          throw error;
+        }
+
         endpointErrors.push(`${endpoint}: ${message}`);
       }
     }
@@ -404,7 +414,7 @@ export class AiService {
 
   private async createDashscopeImageTask(endpoint: string, model: string, prompt: string): Promise<string> {
     const payloadCandidates = this.buildDashscopeImagePayloadCandidates(model, prompt);
-    const asyncModes = endpoint.includes('/multimodal-generation/') ? [true, false] : [true];
+    const asyncModes = endpoint.includes('/multimodal-generation/') ? [false, true] : [true];
 
     let lastError = 'unknown error';
     for (const useAsync of asyncModes) {
@@ -426,6 +436,12 @@ export class AiService {
         if (!response.ok) {
           const message = await this.safeReadResponseText(response);
           lastError = `${response.status} ${message}`;
+          if (response.status === 429 || /Throttling\.RateQuota/i.test(message)) {
+            const retryAfterSeconds = this.extractRetryAfterSeconds(response);
+            this.imageRateLimitUntilMs = Date.now() + retryAfterSeconds * 1000;
+            throw new Error(`阿里云图片限流: ${lastError}，建议等待 ${retryAfterSeconds} 秒后重试`);
+          }
+
           const canRetryWithNextPayload =
             response.status === 400 &&
             (/required body invalid/i.test(message) || /url error/i.test(message) || /invalid parameter/i.test(message));
@@ -459,6 +475,54 @@ export class AiService {
   }
 
   private buildDashscopeImagePayloadCandidates(model: string, prompt: string): Array<Record<string, unknown>> {
+    const qwenImagePrimaryPayload: Record<string, unknown> = {
+      model,
+      input: {
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                text: prompt
+              }
+            ]
+          }
+        ]
+      },
+      parameters: {
+        prompt_extend: true
+      }
+    };
+
+    if (model.startsWith('qwen-image')) {
+      return [
+        qwenImagePrimaryPayload,
+        {
+          ...qwenImagePrimaryPayload,
+          parameters: {
+            prompt_extend: true,
+            size: '1024*1024'
+          }
+        },
+        {
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  text: prompt
+                }
+              ]
+            }
+          ],
+          parameters: {
+            prompt_extend: true
+          }
+        }
+      ];
+    }
+
     return [
       {
         model,
@@ -528,6 +592,12 @@ export class AiService {
 
       if (!response.ok) {
         const message = await this.safeReadResponseText(response);
+        if (response.status === 429 || /Throttling\.RateQuota/i.test(message)) {
+          const retryAfterSeconds = this.extractRetryAfterSeconds(response);
+          this.imageRateLimitUntilMs = Date.now() + retryAfterSeconds * 1000;
+          throw new Error(`阿里云图片限流: ${response.status} ${message}，建议等待 ${retryAfterSeconds} 秒后重试`);
+        }
+
         throw new Error(`阿里云图片任务查询失败: ${response.status} ${message}`);
       }
 
@@ -693,6 +763,25 @@ export class AiService {
     await new Promise((resolve) => {
       setTimeout(resolve, ms);
     });
+  }
+
+  private extractRetryAfterSeconds(response: Response): number {
+    const raw = response.headers.get('retry-after')?.trim() ?? '';
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return Math.min(Math.floor(numeric), 120);
+    }
+
+    return 30;
+  }
+
+  private getImageRateLimitWaitSeconds(): number {
+    const delta = this.imageRateLimitUntilMs - Date.now();
+    if (delta <= 0) {
+      return 0;
+    }
+
+    return Math.ceil(delta / 1000);
   }
 
   private async callDashScopeChat(

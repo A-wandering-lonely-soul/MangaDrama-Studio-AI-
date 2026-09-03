@@ -552,6 +552,15 @@ export default function App() {
     }
   });
 
+  const aiTaskStatus = aiTaskQuery.data?.status;
+  const isImageTaskPolling = aiTaskStatus === 'PENDING' || aiTaskStatus === 'RUNNING';
+  const isImageGenerating = imageMutation.isPending || isImageTaskPolling;
+  const aiTaskStatusLabel = imageMutation.isPending
+    ? '提交中'
+    : isImageTaskPolling
+      ? '生成中'
+      : aiTaskStatus ?? '未提交';
+
   const staticImagesQuery = useQuery({
     queryKey: ['static-images'],
     queryFn: getStaticImages,
@@ -600,6 +609,7 @@ export default function App() {
     }
 
     addObject(createSceneObjectFromAsset(generated));
+    setAssetActionMessage('AI 图片已生成并自动加入本地素材与场景。');
   }, [addAsset, addObject, aiTaskId, aiTaskQuery.data]);
 
   useEffect(() => {
@@ -881,7 +891,18 @@ export default function App() {
   };
 
   const handleGenerateImage = () => {
-    imageMutation.mutate(imagePrompt);
+    if (isImageGenerating) {
+      return;
+    }
+
+    const normalizedPrompt = imagePrompt.trim();
+    if (!normalizedPrompt) {
+      setAssetActionMessage('图片提示词不能为空。');
+      return;
+    }
+
+    setAssetActionMessage('图片任务已提交，正在生成中...');
+    imageMutation.mutate(normalizedPrompt);
   };
 
   const handleLoadHalfFinishedShowcase = () => {
@@ -1180,7 +1201,7 @@ export default function App() {
           <span>音轨: {scene.audioTracks.length}</span>
           <span>项目: {projectName}</span>
           <span>Provider: {providerStateText}</span>
-          <span>AI任务: {aiTaskQuery.data?.status ?? 'IDLE'}</span>
+          <span>AI任务: {aiTaskStatusLabel}</span>
         </div>
       </header>
 
@@ -1393,15 +1414,25 @@ export default function App() {
                 onChange={(event) => setImagePrompt(event.target.value)}
               />
             </label>
-            <button type="button" style={buttonStyleSecondary} onClick={handleGenerateImage}>
-              {imageMutation.isPending ? '提交任务中...' : '生成图片素材'}
+            <button
+              type="button"
+              style={{
+                ...buttonStyleSecondary,
+                opacity: isImageGenerating ? 0.7 : 1,
+                cursor: isImageGenerating ? 'not-allowed' : 'pointer'
+              }}
+              onClick={handleGenerateImage}
+              disabled={isImageGenerating}
+            >
+              {imageMutation.isPending ? '提交任务中...' : isImageTaskPolling ? '生成图片中...' : '生成图片素材'}
             </button>
             <button type="button" style={buttonStyleSecondary} onClick={handleApplyStoryboardScene}>
               分镜一键编排场景
             </button>
             <div style={{ fontSize: 12, color: '#93c5fd' }}>
-              任务状态: {aiTaskQuery.data?.status ?? '未提交'}
+              任务状态: {aiTaskStatusLabel}
               {aiTaskId ? ` · ${aiTaskId}` : ''}
+              {isImageTaskPolling ? ' · 正在轮询任务结果，请稍候' : ''}
               {aiTaskQuery.data?.status === 'FAILED' && aiTaskQuery.data?.error
                 ? ` · 原因: ${aiTaskQuery.data.error}`
                 : ''}
