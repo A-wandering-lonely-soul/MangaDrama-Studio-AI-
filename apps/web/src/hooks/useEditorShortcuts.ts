@@ -1,6 +1,19 @@
 import { useEffect } from 'react';
 import { useSceneStore } from '../stores/sceneStore';
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tagName = target.tagName;
+  if (tagName === 'INPUT' || tagName === 'TEXTAREA') {
+    return true;
+  }
+
+  return target.isContentEditable;
+}
+
 export function useEditorShortcuts(): void {
   const removeSelectedObjects = useSceneStore((state) => state.removeSelectedObjects);
   const duplicateSelectedObjects = useSceneStore((state) => state.duplicateSelectedObjects);
@@ -9,6 +22,10 @@ export function useEditorShortcuts(): void {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
         removeSelectedObjects();

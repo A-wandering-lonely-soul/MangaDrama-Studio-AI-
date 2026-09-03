@@ -97,12 +97,21 @@ export const useSceneStore = create<SceneState>((set) => ({
       };
     }),
   addObject: (object) =>
-    set((state) => ({
-      scene: {
-        ...state.scene,
-        objects: [...state.scene.objects, object]
-      }
-    })),
+    set((state) => {
+      const maxZ = state.scene.objects.reduce((max, item) => Math.max(max, item.zIndex), 0);
+      return {
+        scene: {
+          ...state.scene,
+          objects: [
+            ...state.scene.objects,
+            {
+              ...object,
+              zIndex: maxZ + 1
+            }
+          ]
+        }
+      };
+    }),
   selectObject: (objectId, append = false) =>
     set((state) => {
       if (!objectId) {
@@ -269,25 +278,25 @@ export const useSceneStore = create<SceneState>((set) => ({
       }
 
       const targetId = state.selectedIds[0];
-      const sorted = [...state.scene.objects].sort((a, b) => a.zIndex - b.zIndex);
+      const sorted = sortObjectsByLayer(state.scene.objects);
       const index = sorted.findIndex((item) => item.id === targetId);
       if (index < 0 || index === sorted.length - 1) {
         return state;
       }
 
-      const current = sorted[index];
-      const next = sorted[index + 1];
+      const nextOrder = [...sorted];
+      const current = nextOrder[index];
+      const next = nextOrder[index + 1];
+      nextOrder[index] = next;
+      nextOrder[index + 1] = current;
+      const zById = makeSequentialZIndexMap(nextOrder);
+
       return {
         scene: {
           ...state.scene,
           objects: state.scene.objects.map((object) => {
-            if (object.id === current.id) {
-              return { ...object, zIndex: next.zIndex };
-            }
-            if (object.id === next.id) {
-              return { ...object, zIndex: current.zIndex };
-            }
-            return object;
+            const nextZ = zById.get(object.id);
+            return nextZ === undefined ? object : { ...object, zIndex: nextZ };
           })
         }
       };
@@ -299,47 +308,83 @@ export const useSceneStore = create<SceneState>((set) => ({
       }
 
       const targetId = state.selectedIds[0];
-      const sorted = [...state.scene.objects].sort((a, b) => a.zIndex - b.zIndex);
+      const sorted = sortObjectsByLayer(state.scene.objects);
       const index = sorted.findIndex((item) => item.id === targetId);
       if (index <= 0) {
         return state;
       }
 
-      const current = sorted[index];
-      const prev = sorted[index - 1];
+      const nextOrder = [...sorted];
+      const current = nextOrder[index];
+      const prev = nextOrder[index - 1];
+      nextOrder[index] = prev;
+      nextOrder[index - 1] = current;
+      const zById = makeSequentialZIndexMap(nextOrder);
+
       return {
         scene: {
           ...state.scene,
           objects: state.scene.objects.map((object) => {
-            if (object.id === current.id) {
-              return { ...object, zIndex: prev.zIndex };
-            }
-            if (object.id === prev.id) {
-              return { ...object, zIndex: current.zIndex };
-            }
-            return object;
+            const nextZ = zById.get(object.id);
+            return nextZ === undefined ? object : { ...object, zIndex: nextZ };
           })
         }
       };
     }),
   updateObjectPosition: (objectId, x, y) =>
-    set((state) => ({
-      scene: {
-        ...state.scene,
-        objects: state.scene.objects.map((object) =>
-          object.id === objectId
-            ? {
-                ...object,
-                transform: {
-                  ...object.transform,
-                  x,
-                  y
-                }
-              }
-            : object
-        )
+    set((state) => {
+      const target = state.scene.objects.find((object) => object.id === objectId);
+      if (!target) {
+        return state;
       }
-    })),
+
+      const deltaX = x - target.transform.x;
+      const deltaY = y - target.transform.y;
+
+      return {
+        scene: {
+          ...state.scene,
+          objects: state.scene.objects.map((object) =>
+            object.id === objectId
+              ? {
+                  ...object,
+                  transform: {
+                    ...object.transform,
+                    x,
+                    y
+                  }
+                }
+              : object
+          ),
+          animationTracks: state.scene.animationTracks.map((track) => {
+            if (track.type !== 'object' || track.targetId !== objectId || !track.keyframes) {
+              return track;
+            }
+
+            return {
+              ...track,
+              keyframes: track.keyframes.map((keyframe) => {
+                if (keyframe.property === 'x') {
+                  return {
+                    ...keyframe,
+                    value: keyframe.value + deltaX
+                  };
+                }
+
+                if (keyframe.property === 'y') {
+                  return {
+                    ...keyframe,
+                    value: keyframe.value + deltaY
+                  };
+                }
+
+                return keyframe;
+              })
+            };
+          })
+        }
+      };
+    }),
   updateObjectTransform: (objectId, payload) =>
     set((state) => ({
       scene: {
@@ -462,6 +507,30 @@ export const useSceneStore = create<SceneState>((set) => ({
       }
     }))
 }));
+
+function sortObjectsByLayer(objects: SceneObject[]): SceneObject[] {
+  return [...objects]
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      if (left.item.zIndex !== right.item.zIndex) {
+        return left.item.zIndex - right.item.zIndex;
+      }
+
+      return left.index - right.index;
+    })
+    .map((entry) => entry.item);
+}
+
+function makeSequentialZIndexMap(ordered: SceneObject[]): Map<string, number> {
+  const base = 100;
+  const step = 10;
+  const map = new Map<string, number>();
+  ordered.forEach((object, index) => {
+    map.set(object.id, base + index * step);
+  });
+
+  return map;
+}
 
 export function buildObjectMotionKeyframes(
   scene: Scene,

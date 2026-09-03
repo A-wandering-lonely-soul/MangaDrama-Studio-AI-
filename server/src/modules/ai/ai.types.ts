@@ -61,3 +61,11 @@ export interface StaticAudioItem {
   url: string;
   kind: StaticAudioKind;
 }
+
+export interface ProviderStatusResponse {
+  provider: 'mock' | 'aliyun';
+  textModel: string;
+  imageModel: string;
+  keyConfigured: boolean;
+  baseUrl: string;
+}

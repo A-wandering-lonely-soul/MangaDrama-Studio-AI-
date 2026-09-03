@@ -6,6 +6,7 @@ interface AppConfig {
   aiProvider: 'mock' | 'aliyun';
   dashscopeApiKey: string;
   dashscopeBaseUrl: string;
+  dashscopeImageBaseUrl: string;
   dashscopeTextModel: string;
   dashscopeImageModel: string;
 }
@@ -46,6 +47,7 @@ export function getAppConfig(): AppConfig {
     aiProvider,
     dashscopeApiKey: process.env.DASHSCOPE_API_KEY?.trim() || '',
     dashscopeBaseUrl: process.env.DASHSCOPE_BASE_URL?.trim() || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    dashscopeImageBaseUrl: process.env.DASHSCOPE_IMAGE_BASE_URL?.trim() || '',
     dashscopeTextModel: process.env.DASHSCOPE_TEXT_MODEL?.trim() || 'qwen-plus',
     dashscopeImageModel: process.env.DASHSCOPE_IMAGE_MODEL?.trim() || 'wanx2.1-t2i-turbo'
   };

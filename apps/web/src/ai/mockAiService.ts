@@ -58,6 +58,14 @@ export interface StaticAudioItem {
   kind: StaticAudioKind;
 }
 
+export interface ProviderStatus {
+  provider: 'mock' | 'aliyun';
+  textModel: string;
+  imageModel: string;
+  keyConfigured: boolean;
+  baseUrl: string;
+}
+
 const AI_API_BASE = import.meta.env.VITE_AI_API_BASE_URL ?? 'http://localhost:3000/api/ai';
 const AI_SERVER_ORIGIN = resolveApiOrigin(AI_API_BASE);
 
@@ -116,6 +124,10 @@ export async function getStaticAudios(): Promise<StaticAudioItem[]> {
     ...item,
     url: item.url.startsWith('http') ? item.url : `${AI_SERVER_ORIGIN}${item.url}`
   }));
+}
+
+export async function getProviderStatus(): Promise<ProviderStatus> {
+  return requestJson<ProviderStatus>('/provider-status');
 }
 
 function resolveApiOrigin(apiBase: string): string {

@@ -73,6 +73,7 @@ Phase 18：后端 AI Task 已切换到 SQLite 持久化。
 - `AI_PROVIDER=mock|aliyun`
 - `DASHSCOPE_API_KEY`
 - `DASHSCOPE_BASE_URL`
+- `DASHSCOPE_IMAGE_BASE_URL`（可选，建议填百炼业务空间 `/api/v1` 地址）
 - `DASHSCOPE_TEXT_MODEL`
 - `DASHSCOPE_IMAGE_MODEL`
 

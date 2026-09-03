@@ -77,6 +77,24 @@ function createObjectFromAsset(asset: Asset, options: { x: number; y: number; w:
   };
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function sanitizeCamera(camera: { x: number; y: number; zoom: number; rotation: number }): {
+  x: number;
+  y: number;
+  zoom: number;
+  rotation: number;
+} {
+  return {
+    x: clamp(Number.isFinite(camera.x) ? camera.x : 540, 0, 1080),
+    y: clamp(Number.isFinite(camera.y) ? camera.y : 960, 0, 1920),
+    zoom: clamp(Number.isFinite(camera.zoom) ? camera.zoom : 0.6, 0.25, 2.5),
+    rotation: clamp(Number.isFinite(camera.rotation) ? camera.rotation : 0, -Math.PI, Math.PI)
+  };
+}
+
 export function storyboardToScene(storyboard: StoryboardOutput): ConversionResult {
   const scenes = storyboard.scenes;
   const totalDuration = scenes.reduce((sum, item) => sum + Math.max(1, item.duration), 0);
@@ -121,6 +139,7 @@ export function storyboardToScene(storyboard: StoryboardOutput): ConversionResul
   let cursor = 0;
   for (const item of scenes) {
     const duration = Math.max(1, item.duration);
+    const safeCamera = sanitizeCamera(item.camera);
     if (item.dialogue) {
       subtitleTracks.push({
         id: makeId('subtitle'),
@@ -131,10 +150,10 @@ export function storyboardToScene(storyboard: StoryboardOutput): ConversionResul
     }
 
     cameraTrack.keyframes?.push(
-      { id: makeId('kf'), time: cursor, property: 'x', value: item.camera.x },
-      { id: makeId('kf'), time: cursor, property: 'y', value: item.camera.y },
-      { id: makeId('kf'), time: cursor, property: 'zoom', value: item.camera.zoom },
-      { id: makeId('kf'), time: cursor, property: 'rotation', value: item.camera.rotation }
+      { id: makeId('kf'), time: cursor, property: 'x', value: safeCamera.x },
+      { id: makeId('kf'), time: cursor, property: 'y', value: safeCamera.y },
+      { id: makeId('kf'), time: cursor, property: 'zoom', value: safeCamera.zoom },
+      { id: makeId('kf'), time: cursor, property: 'rotation', value: safeCamera.rotation }
     );
 
     cursor += duration;
@@ -142,13 +161,16 @@ export function storyboardToScene(storyboard: StoryboardOutput): ConversionResul
 
   if (scenes.length > 0) {
     const last = scenes[scenes.length - 1];
+    const safeCamera = sanitizeCamera(last.camera);
     cameraTrack.keyframes?.push(
-      { id: makeId('kf'), time: totalDuration, property: 'x', value: last.camera.x },
-      { id: makeId('kf'), time: totalDuration, property: 'y', value: last.camera.y },
-      { id: makeId('kf'), time: totalDuration, property: 'zoom', value: last.camera.zoom },
-      { id: makeId('kf'), time: totalDuration, property: 'rotation', value: last.camera.rotation }
+      { id: makeId('kf'), time: totalDuration, property: 'x', value: safeCamera.x },
+      { id: makeId('kf'), time: totalDuration, property: 'y', value: safeCamera.y },
+      { id: makeId('kf'), time: totalDuration, property: 'zoom', value: safeCamera.zoom },
+      { id: makeId('kf'), time: totalDuration, property: 'rotation', value: safeCamera.rotation }
     );
   }
+
+  const initialCamera = scenes[0] ? sanitizeCamera(scenes[0].camera) : { x: 540, y: 960, zoom: 0.55, rotation: 0 };
 
   const scene: Scene = {
     id: makeId('scene'),
@@ -156,12 +178,7 @@ export function storyboardToScene(storyboard: StoryboardOutput): ConversionResul
     width: 1080,
     height: 1920,
     duration: Math.max(4, totalDuration),
-    camera: {
-      x: 540,
-      y: 960,
-      zoom: scenes[0]?.camera.zoom ?? 0.55,
-      rotation: 0
-    },
+    camera: initialCamera,
     objects,
     audioTracks: [],
     subtitleTracks,

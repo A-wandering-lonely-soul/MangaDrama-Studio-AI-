@@ -18,10 +18,10 @@ import { useAudioPlayback } from './hooks/useAudioPlayback';
 import { primeAudioContext } from './audio/audioEngine';
 import { useProjectStore } from './stores/projectStore';
 import { useAutoSave } from './hooks/useAutoSave';
-import { exportProjectBundle } from './storage/exportProject';
 import { getPlatformBridge } from './platform/platformBridge';
 import {
   getAiTask,
+  getProviderStatus,
   getStaticAudios,
   getStaticImages,
   postAiImage,
@@ -420,6 +420,32 @@ function loadImageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
   });
 }
 
+function pickMp4MimeType(): string | null {
+  if (typeof MediaRecorder === 'undefined') {
+    return null;
+  }
+
+  const candidates = [
+    'video/mp4;codecs=h264,aac',
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4'
+  ];
+
+  for (const candidate of candidates) {
+    if (MediaRecorder.isTypeSupported(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function waitMs(durationMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, Math.max(0, durationMs));
+  });
+}
+
 export default function App() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
@@ -476,6 +502,7 @@ export default function App() {
   const [replacingAssetId, setReplacingAssetId] = useState<string | null>(null);
   const [positionPreset, setPositionPreset] = useState<PositionAnimationPreset>('right-drift');
   const [cameraPreset, setCameraPreset] = useState<CameraAnimationPreset>('push-in');
+  const [isExportingVideo, setIsExportingVideo] = useState(false);
   const importedTaskIdsRef = useRef(new Set<string>());
 
   useAudioPlayback(scene, assets, isPlaying, currentTime);
@@ -537,6 +564,13 @@ export default function App() {
     staleTime: 60_000
   });
 
+  const providerStatusQuery = useQuery({
+    queryKey: ['provider-status'],
+    queryFn: getProviderStatus,
+    staleTime: 15_000,
+    refetchInterval: 15_000
+  });
+
   useEffect(() => {
     if (!aiTaskId || !aiTaskQuery.data) {
       return;
@@ -553,6 +587,18 @@ export default function App() {
     importedTaskIdsRef.current.add(aiTaskId);
     const generated = aiTaskQuery.data.result.asset;
     addAsset(generated);
+
+    const metadata = generated.metadata;
+    const provider =
+      metadata && typeof metadata === 'object' && typeof (metadata as Record<string, unknown>).provider === 'string'
+        ? String((metadata as Record<string, unknown>).provider)
+        : '';
+
+    if (provider === 'mock-fallback') {
+      setAssetActionMessage('阿里云出图失败，已回退为占位素材并加入素材列表。可重试生成或手动加入场景。');
+      return;
+    }
+
     addObject(createSceneObjectFromAsset(generated));
   }, [addAsset, addObject, aiTaskId, aiTaskQuery.data]);
 
@@ -624,6 +670,13 @@ export default function App() {
 
     return lines;
   }, [activeObject, cameraPreset, positionPreset, scene]);
+
+  const providerLabel = providerStatusQuery.data?.provider === 'aliyun' ? 'aliyun' : 'mock';
+  const providerStateText = providerStatusQuery.isLoading
+    ? '读取中'
+    : providerStatusQuery.isError
+      ? '读取失败'
+      : providerLabel;
 
   useEditorShortcuts();
 
@@ -895,9 +948,56 @@ export default function App() {
     }
 
     const generated = storyboardToScene(storyboardOutput);
-    hydrate(generated.scene, [...assets, ...generated.assets]);
+    const hasExistingVisualObjects = scene.objects.some((object) => object.type !== 'background');
+    const currentMaxZ = scene.objects.reduce((max, object) => Math.max(max, object.zIndex), 0);
+    let zCursor = currentMaxZ + 10;
+
+    const appendedObjects = generated.scene.objects
+      .filter((object) => object.type !== 'background')
+      .map((object) => {
+        const next = {
+          ...object,
+          zIndex: zCursor
+        };
+        zCursor += 10;
+        return next;
+      });
+
+    const appendedAssetIds = new Set(appendedObjects.map((object) => object.assetId).filter((id): id is string => Boolean(id)));
+    const appendedAssets = generated.assets.filter((asset) => appendedAssetIds.has(asset.id));
+
+    const generatedCameraTracks = generated.scene.animationTracks.filter((track) => track.type === 'camera');
+    const existingNonCameraTracks = scene.animationTracks.filter((track) => track.type !== 'camera');
+
+    const subtitleTimeOffset = hasExistingVisualObjects ? scene.duration + 0.2 : 0;
+    const appendedSubtitles = generated.scene.subtitleTracks.map((track) => ({
+      ...track,
+      id: makeId('subtitle'),
+      startTime: track.startTime + subtitleTimeOffset,
+      endTime: track.endTime + subtitleTimeOffset
+    }));
+
+    const nextDuration = hasExistingVisualObjects
+      ? Math.max(scene.duration, subtitleTimeOffset + generated.scene.duration)
+      : Math.max(scene.duration, generated.scene.duration);
+
+    hydrate(
+      {
+        ...scene,
+        name: storyboardOutput.scenes[0]?.mood ? `分镜扩展-${storyboardOutput.scenes[0].mood}` : scene.name,
+        duration: nextDuration,
+        camera: hasExistingVisualObjects ? scene.camera : generated.scene.camera,
+        objects: [...scene.objects, ...appendedObjects],
+        subtitleTracks: [...scene.subtitleTracks, ...appendedSubtitles],
+        animationTracks: hasExistingVisualObjects
+          ? scene.animationTracks
+          : [...existingNonCameraTracks, ...generatedCameraTracks]
+      },
+      [...assets, ...appendedAssets]
+    );
     resetPlayback();
     setIsPlaying(false);
+    setAssetActionMessage(`已增量编排分镜：新增对象 ${appendedObjects.length}，新增字幕 ${generated.scene.subtitleTracks.length}`);
   };
 
   const updateTransformValue = (key: keyof NonNullable<typeof activeObject>['transform'], value: number) => {
@@ -941,24 +1041,94 @@ export default function App() {
   };
 
   const handleExportProject = async () => {
-    const now = Date.now();
-    const project = {
-      id: `export-${now}`,
-      name: projectName,
-      version: '0.1.0',
-      createdAt: now,
-      updatedAt: now,
-      episodes: [
-        {
-          id: 'episode-001',
-          title: '第 1 集',
-          scenes: [scene]
-        }
-      ]
-    };
+    if (isExportingVideo) {
+      return;
+    }
 
-    const result = await exportProjectBundle(project, assets);
-    setExportMessage(result.destination);
+    if (scene.animationTracks.length === 0 && scene.subtitleTracks.length === 0) {
+      setExportMessage('未检测到可播放内容，请先添加动画或字幕后再导出 MP4');
+      return;
+    }
+
+    const canvas = document.querySelector('main section canvas') as HTMLCanvasElement | null;
+    if (!canvas || typeof canvas.captureStream !== 'function') {
+      setExportMessage('当前环境不支持画布录制，无法导出 MP4');
+      return;
+    }
+
+    const mimeType = pickMp4MimeType();
+    if (!mimeType || typeof MediaRecorder === 'undefined') {
+      setExportMessage('当前浏览器不支持 MP4 编码，请改用 Edge/Chrome 新版本或桌面端导出');
+      return;
+    }
+
+    setIsExportingVideo(true);
+    setExportMessage('正在导出 MP4，请稍候...');
+
+    try {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      await waitMs(120);
+
+      const fps = 30;
+      const stream = canvas.captureStream(fps);
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: 8_000_000
+      });
+      const chunks: BlobPart[] = [];
+
+      const stopPromise = new Promise<void>((resolve, reject) => {
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            chunks.push(event.data);
+          }
+        };
+
+        recorder.onerror = () => {
+          reject(new Error('录制器异常'));
+        };
+
+        recorder.onstop = () => {
+          try {
+            const blob = new Blob(chunks, { type: mimeType });
+            if (blob.size === 0) {
+              reject(new Error('导出文件为空'));
+              return;
+            }
+
+            const safeName = (projectName.trim() || 'manga-drama-video').replace(/[\\/:*?"<>|]/g, '_');
+            const fileName = `${safeName}-${Date.now()}.mp4`;
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = fileName;
+            anchor.click();
+            URL.revokeObjectURL(url);
+            setExportMessage(`已导出 MP4: ${fileName}`);
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        };
+      });
+
+      recorder.start(250);
+      void primeAudioContext();
+      setIsPlaying(true);
+
+      await waitMs(scene.duration * 1000 + 400);
+      setIsPlaying(false);
+      recorder.stop();
+      stream.getTracks().forEach((track) => track.stop());
+      await stopPromise;
+      resetPlayback();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      setExportMessage(`导出 MP4 失败: ${message}`);
+    } finally {
+      setIsExportingVideo(false);
+    }
   };
 
   const handleOpenDirectory = async (kind: 'assets' | 'exports') => {
@@ -1009,6 +1179,7 @@ export default function App() {
           <span>字幕: {scene.subtitleTracks.length}</span>
           <span>音轨: {scene.audioTracks.length}</span>
           <span>项目: {projectName}</span>
+          <span>Provider: {providerStateText}</span>
           <span>AI任务: {aiTaskQuery.data?.status ?? 'IDLE'}</span>
         </div>
       </header>
@@ -1231,6 +1402,9 @@ export default function App() {
             <div style={{ fontSize: 12, color: '#93c5fd' }}>
               任务状态: {aiTaskQuery.data?.status ?? '未提交'}
               {aiTaskId ? ` · ${aiTaskId}` : ''}
+              {aiTaskQuery.data?.status === 'FAILED' && aiTaskQuery.data?.error
+                ? ` · 原因: ${aiTaskQuery.data.error}`
+                : ''}
             </div>
             {storyOutput && (
               <details>
@@ -1336,7 +1510,7 @@ export default function App() {
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button type="button" style={buttonStyleSecondary} onClick={() => void handleExportProject()}>
-                导出项目 ZIP
+                {isExportingVideo ? '导出 MP4 中...' : '导出 MP4 视频'}
               </button>
               <button type="button" style={buttonStyleSecondary} onClick={() => void handleOpenDirectory('exports')}>
                 打开导出目录
@@ -1486,6 +1660,27 @@ export default function App() {
           <div style={inspectorRow}>
             <span>对象数量</span>
             <strong>{scene.objects.length}</strong>
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <h3 style={{ fontSize: 14, marginBottom: 8 }}>Provider 状态</h3>
+            <div
+              style={{
+                border: '1px solid rgba(148, 163, 184, 0.2)',
+                borderRadius: 10,
+                background: 'rgba(15, 23, 42, 0.6)',
+                padding: '10px 12px',
+                display: 'grid',
+                gap: 6,
+                fontSize: 12,
+                color: '#cbd5e1'
+              }}
+            >
+              <div>当前通道: {providerStateText}</div>
+              <div>文本模型: {providerStatusQuery.data?.textModel ?? '-'}</div>
+              <div>图片模型: {providerStatusQuery.data?.imageModel ?? '-'}</div>
+              <div>Key状态: {providerStatusQuery.data ? (providerStatusQuery.data.keyConfigured ? '已配置' : '未配置') : '-'}</div>
+            </div>
           </div>
 
           <div style={{ marginTop: 20 }}>

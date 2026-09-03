@@ -16,6 +16,11 @@ export class AiController {
     return this.aiService.listStaticAudios();
   }
 
+  @Get('provider-status')
+  getProviderStatus() {
+    return this.aiService.getProviderStatus();
+  }
+
   @Post('story')
   createStory(@Body() payload: PromptPayload) {
     return this.aiService.createStory(payload?.prompt ?? '');
