@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { platform } from 'node:os';
 
-const portInput = process.argv[2] ?? '3000';
+const portInput = process.argv[2] ?? '3300';
 const port = Number(portInput);
 
 if (!Number.isInteger(port) || port <= 0) {

@@ -66,7 +66,7 @@ export interface ProviderStatus {
   baseUrl: string;
 }
 
-const AI_API_BASE = import.meta.env.VITE_AI_API_BASE_URL ?? 'http://localhost:3000/api/ai';
+const AI_API_BASE = import.meta.env.VITE_AI_API_BASE_URL ?? 'http://localhost:3300/api/ai';
 const AI_SERVER_ORIGIN = resolveApiOrigin(AI_API_BASE);
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -134,6 +134,6 @@ function resolveApiOrigin(apiBase: string): string {
   try {
     return new URL(apiBase).origin;
   } catch {
-    return 'http://localhost:3000';
+    return 'http://localhost:3300';
   }
 }

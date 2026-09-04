@@ -12,9 +12,9 @@ interface AppConfig {
 }
 
 function parsePort(value: string | undefined): number {
-  const port = Number(value ?? '3000');
+  const port = Number(value ?? '3300');
   if (!Number.isInteger(port) || port <= 0) {
-    return 3000;
+    return 3300;
   }
 
   return port;

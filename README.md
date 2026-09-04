@@ -46,7 +46,7 @@ pnpm dev:core
 其中：
 
 - Web: http://localhost:5173
-- Server: http://localhost:3000
+- Server: http://localhost:3300
 
 AI 冒烟测试（需先启动 Server）：
 

@@ -1,4 +1,4 @@
-const baseUrl = process.env.AI_API_BASE_URL ?? 'http://localhost:3000/api/ai';
+const baseUrl = process.env.AI_API_BASE_URL ?? 'http://localhost:3300/api/ai';
 
 async function request(path, init) {
   const response = await fetch(`${baseUrl}${path}`, {
