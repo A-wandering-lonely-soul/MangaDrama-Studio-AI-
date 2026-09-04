@@ -2,6 +2,8 @@
 
 AI 漫剧可视化创作工作台（Web + Desktop + Server 最小闭环）。
 
+![Web 预览](server/static/web.png)
+
 ## 目标
 
 在不提前堆积 UI 的前提下，已完成：
